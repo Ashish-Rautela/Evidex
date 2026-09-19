@@ -309,7 +309,7 @@ Resources:
       Handler: document.handler
       CodeUri: ../backend/dist/
       MemorySize: 256
-      Timeout: 15
+      Timeout: 30
       Events:
         ListDocs:
           Type: HttpApi

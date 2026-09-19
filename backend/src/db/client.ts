@@ -6,6 +6,7 @@ import { env } from '../config/env.js';
 let dbPassword = env.DB_PASSWORD;
 let isPasswordFetched = false;
 let isInitialized = false;
+let initPromise: Promise<void> | null = null;
 
 const getDbPassword = async (): Promise<string> => {
   if (env.DB_SECRET_ARN && !isPasswordFetched) {
@@ -29,14 +30,6 @@ const poolConfig = {
 };
 
 const pool = new Pool(poolConfig);
-
-pool.on('connect', async (client) => {
-  try {
-    await registerType(client);
-  } catch {
-    // vector type might not be created yet on initial bootstrap
-  }
-});
 
 pool.on('error', (err) => {
   console.error('Unexpected error on idle client', err);
@@ -130,15 +123,31 @@ const initSchemaSql = `
 
 const initDb = async () => {
   if (isInitialized) return;
-  try {
-    await pool.query(initSchemaSql);
-    isInitialized = true;
-  } catch (err) {
-    console.error('Database schema auto-init error:', err);
-  }
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    let client;
+    try {
+      client = await pool.connect();
+      await client.query(initSchemaSql);
+      try {
+        await registerType(client);
+      } catch (err) {
+        console.warn('pgvector registerType warning:', err);
+      }
+      isInitialized = true;
+    } catch (err) {
+      console.error('Database schema auto-init error:', err);
+      initPromise = null; // allow retry on failure
+    } finally {
+      if (client) client.release();
+    }
+  })();
+
+  return initPromise;
 };
 
-const ensurePassword = async () => {
+const ensureReady = async () => {
   if (!isPasswordFetched && env.DB_SECRET_ARN) {
     pool.options.password = await getDbPassword();
   } else if (!pool.options.password) {
@@ -151,7 +160,7 @@ export const db = new Proxy(pool, {
   get: (target, prop) => {
     if (prop === 'connect') {
       return async () => {
-        await ensurePassword();
+        await ensureReady();
         return target.connect();
       };
     }
@@ -163,6 +172,6 @@ export const query = async <R extends QueryResultRow = any>(
   text: string,
   params?: any[]
 ): Promise<QueryResult<R>> => {
-  await ensurePassword();
+  await ensureReady();
   return pool.query<R>(text, params);
 };
