@@ -1,4 +1,4 @@
-name: Frontend CI
+name: Frontend CI/CD
 
 on:
   push:
@@ -35,3 +35,61 @@ jobs:
           name: frontend-build
           path: frontend/dist/
           retention-days: 7
+
+  deploy:
+    name: Deploy Frontend to S3
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+        working-directory: frontend
+
+      - run: npm run build
+        working-directory: frontend
+        env:
+          VITE_API_URL: ${{ vars.API_URL || '' }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Deploy to S3 Website
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET_NAME="evidex-frontend-${ACCOUNT_ID}-${{ vars.ENVIRONMENT || 'prod' }}"
+          REGION="${{ vars.AWS_REGION || 'us-east-1' }}"
+          echo "Deploying to s3://$BUCKET_NAME in $REGION..."
+
+          if [ "$REGION" = "us-east-1" ]; then
+            aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$REGION" || true
+          else
+            aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$REGION" --create-bucket-configuration LocationConstraint="$REGION" || true
+          fi
+
+          aws s3api put-public-access-block --bucket "$BUCKET_NAME" --public-access-block-configuration "BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false" || true
+
+          aws s3api put-bucket-policy --bucket "$BUCKET_NAME" --policy "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"PublicReadGetObject\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::$BUCKET_NAME/*\"}]}" || true
+
+          aws s3 website "s3://$BUCKET_NAME" --index-document index.html --error-document index.html || true
+
+          aws s3 sync frontend/dist/ "s3://$BUCKET_NAME" --delete
+
+          URL="http://$BUCKET_NAME.s3-website-$REGION.amazonaws.com"
+          echo "=========================================="
+          echo "🚀 Frontend deployed successfully!"
+          echo "URL: $URL"
+          echo "=========================================="
+          echo "### 🚀 Frontend Deployed!" >> $GITHUB_STEP_SUMMARY
+          echo "Visit your live frontend at: [$URL]($URL)" >> $GITHUB_STEP_SUMMARY
