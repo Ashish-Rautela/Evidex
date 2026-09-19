@@ -68,7 +68,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers/upload.handler.handler
-      CodeUri: backend/dist/
+      CodeUri: ../backend/dist/
       MemorySize: 256
       Timeout: 30
       Events:
@@ -97,7 +97,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers/search.handler.handler
-      CodeUri: backend/dist/
+      CodeUri: ../backend/dist/
       MemorySize: 512
       Timeout: 30
       Events:
@@ -124,7 +124,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers/document.handler.handler
-      CodeUri: backend/dist/
+      CodeUri: ../backend/dist/
       MemorySize: 256
       Timeout: 15
       Events:
@@ -169,7 +169,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers/extract.handler.handler
-      CodeUri: backend/dist/
+      CodeUri: ../backend/dist/
       MemorySize: 512
       Timeout: 60
       Events:
@@ -198,7 +198,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers/chunk.handler.handler
-      CodeUri: backend/dist/
+      CodeUri: ../backend/dist/
       MemorySize: 1024
       Timeout: 900
       Events:
