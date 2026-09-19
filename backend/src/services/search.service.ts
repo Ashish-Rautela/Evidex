@@ -3,12 +3,16 @@ import { createDownloadUrl } from './s3.service.js';
 import { hybridSearchQuery } from '../db/queries/search.queries.js';
 
 export interface SearchResult {
-    chunkId: string;
-    chunkText: string;
     documentId: string;
-    downloadUrl: string;
-    metadata?: any;
-    relevanceScore?: number;
+    fileName: string;
+    clauseIdentifier?: string;
+    clauseTitle?: string;
+    parentClauseText?: string;
+    matchedChunkText: string;
+    pageNumber: number;
+    coordinates?: { x1: number; y1: number; x2: number; y2: number };
+    relevanceScore: number;
+    pdfUrl: string;
 }
 
 export async function hybridSearch(
@@ -42,19 +46,16 @@ export async function hybridSearch(
             const downloadUrl = await createDownloadUrl(row.storage_key);
             
             return {
-                chunkId: ranked.chunkId,
-                chunkText: ranked.chunkText,
                 documentId: row.document_id,
-                downloadUrl,
+                fileName: row.file_name,
+                clauseIdentifier: row.clause_identifier,
+                clauseTitle: row.clause_title,
+                parentClauseText: row.parent_clause_text,
+                matchedChunkText: ranked.chunkText,
+                pageNumber: row.page_number,
+                coordinates: row.coordinates,
                 relevanceScore: ranked.relevanceScore,
-                metadata: {
-                    pageNumber: row.page_number,
-                    coordinates: row.coordinates,
-                    clauseIdentifier: row.clause_identifier,
-                    clauseTitle: row.clause_title,
-                    parentClauseText: row.parent_clause_text,
-                    fileName: row.file_name
-                }
+                pdfUrl: downloadUrl
             };
         })
     );
