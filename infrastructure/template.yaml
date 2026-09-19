@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: Evidex SAM Template - Free-tier eligible PostgreSQL architecture
 
@@ -11,7 +11,7 @@ Parameters:
       - prod
   PostgresVersion:
     Type: String
-    Default: '16.4'
+    Default: "16.4"
   DBInstanceClass:
     Type: String
     Default: db.t3.micro
@@ -27,12 +27,12 @@ Globals:
       Variables:
         DB_SECRET_ARN: !GetAtt DBInstance.MasterUserSecret.SecretArn
         DB_HOST: !GetAtt DBInstance.Endpoint.Address
-        DB_PORT: '5432'
+        DB_PORT: "5432"
         DB_NAME: evidex
         DB_USER: evidex_admin
         S3_BUCKET: !Ref ContractsBucket
         SQS_QUEUE_URL: !Ref IngestionQueue
-        BEDROCK_EMBED_MODEL_ID: 'amazon.titan-embed-text-v2:0'
+        BEDROCK_EMBED_MODEL_ID: "amazon.titan-embed-text-v2:0"
 
 Resources:
   # ============================================================================
@@ -46,14 +46,14 @@ Resources:
       EnableDnsSupport: true
       Tags:
         - Key: Name
-          Value: !Sub 'evidex-vpc-${Environment}'
+          Value: !Sub "evidex-vpc-${Environment}"
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Name
-          Value: !Sub 'evidex-igw-${Environment}'
+          Value: !Sub "evidex-igw-${Environment}"
 
   VPCGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -66,33 +66,33 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.1.0/24
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      AvailabilityZone: !Select [0, !GetAZs ""]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub 'evidex-subnet-a-${Environment}'
+          Value: !Sub "evidex-subnet-a-${Environment}"
 
   SubnetB:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.2.0/24
-      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      AvailabilityZone: !Select [1, !GetAZs ""]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub 'evidex-subnet-b-${Environment}'
+          Value: !Sub "evidex-subnet-b-${Environment}"
 
   SubnetC:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       CidrBlock: 10.0.3.0/24
-      AvailabilityZone: !Select [ 2, !GetAZs '' ]
+      AvailabilityZone: !Select [2, !GetAZs ""]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub 'evidex-subnet-c-${Environment}'
+          Value: !Sub "evidex-subnet-c-${Environment}"
 
   RouteTable:
     Type: AWS::EC2::RouteTable
@@ -100,7 +100,7 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub 'evidex-rt-${Environment}'
+          Value: !Sub "evidex-rt-${Environment}"
 
   PublicRoute:
     Type: AWS::EC2::Route
@@ -154,7 +154,7 @@ Resources:
   DBInstance:
     Type: AWS::RDS::DBInstance
     Properties:
-      DBInstanceIdentifier: !Sub 'evidex-db-${Environment}'
+      DBInstanceIdentifier: !Sub "evidex-db-${Environment}"
       Engine: postgres
       EngineVersion: !Ref PostgresVersion
       DBInstanceClass: !Ref DBInstanceClass
@@ -174,7 +174,7 @@ Resources:
   ContractsBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'evidex-contracts-${AWS::AccountId}-${AWS::Region}-${Environment}'
+      BucketName: !Sub "evidex-contracts-${AWS::AccountId}-${AWS::Region}-${Environment}"
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -185,7 +185,7 @@ Resources:
   IngestionQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub 'evidex-ingestion-queue-${Environment}'
+      QueueName: !Sub "evidex-ingestion-queue-${Environment}"
       VisibilityTimeout: 960
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt IngestionDLQ.Arn
@@ -194,19 +194,19 @@ Resources:
   IngestionDLQ:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub 'evidex-ingestion-dlq-${Environment}'
+      QueueName: !Sub "evidex-ingestion-dlq-${Environment}"
       MessageRetentionPeriod: 1209600
 
   TextractCompleteTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: !Sub 'evidex-textract-complete-${Environment}'
+      TopicName: !Sub "evidex-textract-complete-${Environment}"
 
   TextractServiceRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
@@ -215,7 +215,7 @@ Resources:
       Policies:
         - PolicyName: TextractSNSPublish
           PolicyDocument:
-            Version: '2012-10-17'
+            Version: "2012-10-17"
             Statement:
               - Effect: Allow
                 Action: sns:Publish
@@ -227,7 +227,7 @@ Resources:
   UserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: !Sub 'evidex-users-${Environment}'
+      UserPoolName: !Sub "evidex-users-${Environment}"
       AutoVerifiedAttributes:
         - email
       Schema:
@@ -238,7 +238,7 @@ Resources:
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
-      ClientName: !Sub 'evidex-client-${Environment}'
+      ClientName: !Sub "evidex-client-${Environment}"
       UserPoolId: !Ref UserPool
       GenerateSecret: false
       ExplicitAuthFlows:
@@ -253,7 +253,7 @@ Resources:
     Properties:
       CorsConfiguration:
         AllowOrigins:
-          - '*'
+          - "*"
         AllowMethods:
           - GET
           - POST
@@ -326,7 +326,7 @@ Resources:
               Action:
                 - bedrock:InvokeModel
                 - bedrock-agent-runtime:Rerank
-              Resource: '*'
+              Resource: "*"
 
   DocumentHandler:
     Type: AWS::Serverless::Function
@@ -394,7 +394,7 @@ Resources:
             - Effect: Allow
               Action:
                 - textract:StartDocumentAnalysis
-              Resource: '*'
+              Resource: "*"
             - Effect: Allow
               Action:
                 - iam:PassRole
@@ -421,7 +421,7 @@ Resources:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
-              Resource: '*'
+              Resource: "*"
 
 # ============================================================================
 # Outputs
@@ -429,7 +429,7 @@ Resources:
 Outputs:
   ApiUrl:
     Description: HTTP API Gateway endpoint URL
-    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
   S3BucketName:
     Description: S3 Contracts Bucket Name
     Value: !Ref ContractsBucket
