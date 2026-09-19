@@ -2,13 +2,5 @@
   {
     "ParameterKey": "Environment",
     "ParameterValue": "prod"
-  },
-  {
-    "ParameterKey": "DBMinCapacity",
-    "ParameterValue": "0.5"
-  },
-  {
-    "ParameterKey": "DBMaxCapacity",
-    "ParameterValue": "4"
   }
 ]

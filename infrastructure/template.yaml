@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Evidex SAM Template - Self-contained serverless architecture
+Description: Evidex SAM Template - Free-tier eligible PostgreSQL architecture
 
 Parameters:
   Environment:
@@ -9,12 +9,6 @@ Parameters:
     AllowedValues:
       - dev
       - prod
-  DBMinCapacity:
-    Type: Number
-    Default: 0.5
-  DBMaxCapacity:
-    Type: Number
-    Default: 2
 
 Globals:
   Function:
@@ -25,8 +19,8 @@ Globals:
     Timeout: 30
     Environment:
       Variables:
-        DB_SECRET_ARN: !GetAtt DBCluster.MasterUserSecret.SecretArn
-        DB_HOST: !GetAtt DBCluster.Endpoint.Address
+        DB_SECRET_ARN: !GetAtt DBInstance.MasterUserSecret.SecretArn
+        DB_HOST: !GetAtt DBInstance.Endpoint.Address
         DB_PORT: '5432'
         DB_NAME: evidex
         DB_USER: evidex_admin
@@ -37,7 +31,7 @@ Globals:
 
 Resources:
   # ============================================================================
-  # Networking (Self-Contained VPC for Aurora Serverless v2)
+  # Networking (Self-Contained VPC for RDS PostgreSQL)
   # ============================================================================
   VPC:
     Type: AWS::EC2::VPC
@@ -115,7 +109,7 @@ Resources:
   DBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Security group for Aurora Serverless v2
+      GroupDescription: Security group for RDS PostgreSQL
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -126,35 +120,28 @@ Resources:
   DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
-      DBSubnetGroupDescription: Subnet group for Aurora Serverless v2
+      DBSubnetGroupDescription: Subnet group for RDS PostgreSQL
       SubnetIds:
         - !Ref SubnetA
         - !Ref SubnetB
 
   # ============================================================================
-  # Aurora PostgreSQL Database (with pgvector)
+  # RDS PostgreSQL Database (Free-Tier Eligible db.t4g.micro with pgvector)
   # ============================================================================
-  DBCluster:
-    Type: AWS::RDS::DBCluster
-    Properties:
-      Engine: aurora-postgresql
-      EngineVersion: '16.4'
-      DatabaseName: evidex
-      DBSubnetGroupName: !Ref DBSubnetGroup
-      VpcSecurityGroupIds:
-        - !Ref DBSecurityGroup
-      MasterUsername: evidex_admin
-      ManageMasterUserPassword: true
-      ServerlessV2ScalingConfiguration:
-        MinCapacity: !Ref DBMinCapacity
-        MaxCapacity: !Ref DBMaxCapacity
-
   DBInstance:
     Type: AWS::RDS::DBInstance
     Properties:
-      Engine: aurora-postgresql
-      DBInstanceClass: db.serverless
-      DBClusterIdentifier: !Ref DBCluster
+      DBInstanceIdentifier: !Sub 'evidex-db-${Environment}'
+      Engine: postgres
+      EngineVersion: '16.3'
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: 20
+      DBName: evidex
+      MasterUsername: evidex_admin
+      ManageMasterUserPassword: true
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
       PubliclyAccessible: true
 
   # ============================================================================
@@ -262,7 +249,7 @@ Resources:
         DefaultAuthorizer: CognitoAuthorizer
 
   # ============================================================================
-  # Lambda Functions (Running serverless without VPC constraints)
+  # Lambda Functions
   # ============================================================================
   UploadHandler:
     Type: AWS::Serverless::Function
@@ -290,7 +277,7 @@ Resources:
         - SQSSendMessagePolicy:
             QueueName: !GetAtt IngestionQueue.QueueName
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !GetAtt DBCluster.MasterUserSecret.SecretArn
+            SecretArn: !GetAtt DBInstance.MasterUserSecret.SecretArn
 
   SearchHandler:
     Type: AWS::Serverless::Function
@@ -310,7 +297,7 @@ Resources:
         - S3ReadPolicy:
             BucketName: !Ref ContractsBucket
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !GetAtt DBCluster.MasterUserSecret.SecretArn
+            SecretArn: !GetAtt DBInstance.MasterUserSecret.SecretArn
         - Statement:
             - Effect: Allow
               Action:
@@ -360,7 +347,7 @@ Resources:
         - S3ReadPolicy:
             BucketName: !Ref ContractsBucket
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !GetAtt DBCluster.MasterUserSecret.SecretArn
+            SecretArn: !GetAtt DBInstance.MasterUserSecret.SecretArn
 
   ExtractHandler:
     Type: AWS::Serverless::Function
@@ -379,7 +366,7 @@ Resources:
         - S3ReadPolicy:
             BucketName: !Ref ContractsBucket
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !GetAtt DBCluster.MasterUserSecret.SecretArn
+            SecretArn: !GetAtt DBInstance.MasterUserSecret.SecretArn
         - Statement:
             - Effect: Allow
               Action:
@@ -406,7 +393,7 @@ Resources:
         - S3CrudPolicy:
             BucketName: !Ref ContractsBucket
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !GetAtt DBCluster.MasterUserSecret.SecretArn
+            SecretArn: !GetAtt DBInstance.MasterUserSecret.SecretArn
         - Statement:
             - Effect: Allow
               Action:
@@ -432,6 +419,6 @@ Outputs:
   UserPoolClientId:
     Description: Cognito User Pool Client ID
     Value: !Ref UserPoolClient
-  DBClusterEndpoint:
-    Description: Aurora Serverless v2 Cluster Endpoint
-    Value: !GetAtt DBCluster.Endpoint.Address
+  DBEndpoint:
+    Description: RDS PostgreSQL Endpoint Address
+    Value: !GetAtt DBInstance.Endpoint.Address
