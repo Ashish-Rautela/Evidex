@@ -12,7 +12,8 @@ export function DocumentStatus({ documentId, initialStatus }: { documentId: stri
         const doc = await apiClient.get(`/api/v1/documents/${documentId}`);
         setStatus(doc.status);
       } catch (err) {
-        console.error(err);
+        console.error('Error fetching document status:', err);
+        setStatus('FAILED'); // Stop polling if document is inaccessible or broken
       }
     }, 5000);
 
