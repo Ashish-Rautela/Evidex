@@ -11,7 +11,7 @@ export function DashboardPage() {
   const fetchDocs = async () => {
     try {
       const res = await apiClient.get('/api/v1/documents');
-      setDocuments(res.items || []);
+      setDocuments(res.documents || []);
     } catch (err) {
       console.error(err);
     }
@@ -48,13 +48,13 @@ export function DashboardPage() {
               ) : (
                 documents.map((doc) => (
                   <tr 
-                    key={doc.id} 
-                    onClick={() => navigate(`/viewer/${doc.id}`)}
+                    key={doc.documentId} 
+                    onClick={() => navigate(`/viewer/${doc.documentId}`)}
                     className="hover:bg-gray-50 cursor-pointer transition"
                   >
                     <td className="px-6 py-4 font-medium text-gray-900">{doc.fileName}</td>
                     <td className="px-6 py-4">
-                      <DocumentStatus documentId={doc.id} initialStatus={doc.status} />
+                      <DocumentStatus documentId={doc.documentId} initialStatus={doc.status} />
                     </td>
                     <td className="px-6 py-4 text-gray-500">{doc.totalPages || '-'}</td>
                     <td className="px-6 py-4 text-gray-500">{new Date(doc.createdAt).toLocaleDateString()}</td>
