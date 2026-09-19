@@ -16,16 +16,6 @@ interface Props {
 export function ContractViewer({ pdfUrl, pageNumber, coordinates, clauseTitle, clauseText }: Props) {
   const [numPages, setNumPages] = useState<number>();
 
-  // Scroll to the targeted page once the document loads
-  useEffect(() => {
-    if (numPages && pageNumber) {
-      const pageElement = document.getElementById(`pdf-page-${pageNumber}`);
-      if (pageElement) {
-        pageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }
-  }, [numPages, pageNumber]);
-
   return (
     <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-120px)]">
       <div className="flex-1 bg-gray-200 p-8 rounded-xl border border-gray-300 overflow-auto flex flex-col items-center shadow-inner relative">
@@ -43,6 +33,18 @@ export function ContractViewer({ pdfUrl, pageNumber, coordinates, clauseTitle, c
                 renderAnnotationLayer={false} 
                 width={800}
                 className="overflow-hidden"
+                onLoadSuccess={
+                  p === pageNumber 
+                    ? () => {
+                        setTimeout(() => {
+                          const pageElement = document.getElementById(`pdf-page-${p}`);
+                          if (pageElement) {
+                            pageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }, 200); // Wait for DOM layout
+                      }
+                    : undefined
+                }
               />
               {p === pageNumber && coordinates && (
                 <div
