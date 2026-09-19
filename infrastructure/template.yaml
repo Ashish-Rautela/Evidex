@@ -245,7 +245,6 @@ Resources:
               issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
               audience:
                 - !Ref UserPoolClient
-        DefaultAuthorizer: CognitoAuthorizer
 
   # ============================================================================
   # Lambda Functions
