@@ -15,9 +15,11 @@ const AclRequestSchema = z.object({
 export const handler = wrapHandler(async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
   const { tenantId, userId: requestingUserId } = extractUserContext(event);
   const route = event.routeKey || '';
+  const method = event.requestContext?.http?.method || 'GET';
   const documentId = event.pathParameters?.id;
 
-  if (route.includes('GET /documents') && !documentId) {
+  // List all documents for this tenant
+  if (method === 'GET' && !documentId) {
     const page = parseInt(event.queryStringParameters?.page || '1', 10);
     const limit = parseInt(event.queryStringParameters?.limit || '20', 10);
     const offset = (page - 1) * limit;
@@ -30,24 +32,24 @@ export const handler = wrapHandler(async (event: APIGatewayProxyEventV2): Promis
   const hasAccess = await checkAccess(documentId, requestingUserId);
   if (!hasAccess) return errorResponse(403, 'Access denied');
 
-  if (route.includes('GET /documents/{id}/clauses')) {
+  if (method === 'GET' && route.includes('clauses')) {
     const clauses = await getClausesByDocument(documentId);
     return successResponse({ clauses });
   }
 
-  if (route.includes('GET /documents/{id}')) {
+  if (method === 'GET') {
     const doc = await getDocument(documentId, tenantId);
     if (!doc) return errorResponse(404, 'Document not found');
     return successResponse(doc);
   }
 
-  if (route.includes('POST /documents/{id}/acl')) {
+  if (method === 'POST' && route.includes('acl')) {
     const body = parseBody(event.body, AclRequestSchema);
     await grantAccess(documentId, tenantId, body.userId, body.permission);
     return successResponse({ success: true });
   }
 
-  if (route.includes('DELETE /documents/{id}')) {
+  if (method === 'DELETE') {
     await deleteDocument(documentId, tenantId);
     return successResponse({ success: true });
   }
