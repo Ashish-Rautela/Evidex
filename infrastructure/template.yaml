@@ -1,0 +1,406 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2021-10-01
+Description: Evidex SAM Template
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+  PrivateSubnetIds:
+    Type: CommaDelimitedList
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  DBMinCapacity:
+    Type: Number
+    Default: 0.5
+  DBMaxCapacity:
+    Type: Number
+    Default: 8
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Architectures:
+      - arm64
+    MemorySize: 256
+    Timeout: 30
+    Environment:
+      Variables:
+        DB_SECRET_ARN: !Ref DBSecret
+        S3_BUCKET: !Ref ContractsBucket
+        AWS_REGION: !Ref AWS::Region
+        SQS_QUEUE_URL: !Ref IngestionQueue
+        BEDROCK_EMBED_MODEL_ID: 'amazon.titan-embed-text-v2:0'
+    VpcConfig:
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds:
+        - !Ref LambdaSecurityGroup
+
+Resources:
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+          - POST
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Authorization
+          - Content-Type
+      Auth:
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+              audience:
+                - !Ref UserPoolClient
+        DefaultAuthorizer: CognitoAuthorizer
+
+  UploadHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/upload.handler.handler
+      CodeUri: backend/dist/
+      MemorySize: 256
+      Timeout: 30
+      Events:
+        UploadIntent:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/documents/upload-intent
+            Method: POST
+            ApiId: !Ref HttpApi
+        UploadConfirm:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/documents/{id}/confirm
+            Method: POST
+            ApiId: !Ref HttpApi
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref ContractsBucket
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt IngestionQueue.QueueName
+        - SecretsManagerReadWrite:
+            SecretArn: !Ref DBSecret
+        - AmazonVPCAccessExecutionRole
+
+  SearchHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/search.handler.handler
+      CodeUri: backend/dist/
+      MemorySize: 512
+      Timeout: 30
+      Events:
+        Search:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/search
+            Method: POST
+            ApiId: !Ref HttpApi
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref ContractsBucket
+        - SecretsManagerReadWrite:
+            SecretArn: !Ref DBSecret
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock-agent-runtime:Rerank
+              Resource: '*'
+        - AmazonVPCAccessExecutionRole
+
+  DocumentHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/document.handler.handler
+      CodeUri: backend/dist/
+      MemorySize: 256
+      Timeout: 15
+      Events:
+        ListDocs:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/documents
+            Method: GET
+            ApiId: !Ref HttpApi
+        GetDoc:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/documents/{id}
+            Method: GET
+            ApiId: !Ref HttpApi
+        GetClauses:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/documents/{id}/clauses
+            Method: GET
+            ApiId: !Ref HttpApi
+        AddAcl:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/documents/{id}/acl
+            Method: POST
+            ApiId: !Ref HttpApi
+        DeleteDoc:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/documents/{id}
+            Method: DELETE
+            ApiId: !Ref HttpApi
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref ContractsBucket
+        - SecretsManagerReadWrite:
+            SecretArn: !Ref DBSecret
+        - AmazonVPCAccessExecutionRole
+
+  ExtractHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/extract.handler.handler
+      CodeUri: backend/dist/
+      MemorySize: 512
+      Timeout: 60
+      Events:
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt IngestionQueue.Arn
+            BatchSize: 1
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref ContractsBucket
+        - SecretsManagerReadWrite:
+            SecretArn: !Ref DBSecret
+        - Statement:
+            - Effect: Allow
+              Action:
+                - textract:StartDocumentAnalysis
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - iam:PassRole
+              Resource: !GetAtt TextractServiceRole.Arn
+        - AmazonVPCAccessExecutionRole
+
+  ChunkHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/chunk.handler.handler
+      CodeUri: backend/dist/
+      MemorySize: 1024
+      Timeout: 900
+      Events:
+        SNSTrigger:
+          Type: SNS
+          Properties:
+            Topic: !Ref TextractCompleteTopic
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref ContractsBucket
+        - SecretsManagerReadWrite:
+            SecretArn: !Ref DBSecret
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: '*'
+        - AmazonVPCAccessExecutionRole
+
+  IngestionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'evidex-ingestion-queue-${Environment}'
+      VisibilityTimeout: 960
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt IngestionDLQ.Arn
+        maxReceiveCount: 3
+
+  IngestionDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'evidex-ingestion-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600
+
+  TextractCompleteTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'evidex-textract-complete-${Environment}'
+
+  ContractsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'evidex-contracts-${AWS::AccountId}-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub 'evidex-users-${Environment}'
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: tenant_id
+          AttributeDataType: String
+          Mutable: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub 'evidex-client-${Environment}'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Evidex Lambda functions
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  TextractServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: textract.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TextractSNSPublish
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref TextractCompleteTopic
+
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'evidex-db-secret-${Environment}'
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"evidex_admin"}'
+        GenerateStringKey: password
+        ExcludePunctuation: true
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Aurora Serverless v2 and Proxy
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Aurora Serverless v2
+      SubnetIds: !Ref PrivateSubnetIds
+
+  DBCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-postgresql
+      EngineVersion: '16.4'
+      DatabaseName: evidex
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref DBSecurityGroup
+      MasterUsername: !Join [ '', [ '{{resolve:secretsmanager:', !Ref DBSecret, ':SecretString:username}}' ] ]
+      MasterUserPassword: !Join [ '', [ '{{resolve:secretsmanager:', !Ref DBSecret, ':SecretString:password}}' ] ]
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: !Ref DBMinCapacity
+        MaxCapacity: !Ref DBMaxCapacity
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: aurora-postgresql
+      DBInstanceClass: db.serverless
+      DBClusterIdentifier: !Ref DBCluster
+
+  DBProxy:
+    Type: AWS::RDS::DBProxy
+    Properties:
+      DBProxyName: !Sub 'evidex-proxy-${Environment}'
+      EngineFamily: POSTGRESQL
+      RequireTLS: true
+      RoleArn: !GetAtt DBProxyRole.Arn
+      VpcSubnetIds: !Ref PrivateSubnetIds
+      VpcSecurityGroupIds:
+        - !Ref DBSecurityGroup
+      Auth:
+        - AuthScheme: SECRETS
+          IAMAuth: DISABLED
+          SecretArn: !Ref DBSecret
+
+  DBProxyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: rds.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DBProxySecretAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref DBSecret
+
+  DBProxyTargetGroup:
+    Type: AWS::RDS::DBProxyTargetGroup
+    Properties:
+      DBProxyName: !Ref DBProxy
+      TargetGroupName: default
+      DBClusterIdentifiers:
+        - !Ref DBCluster
+
+Outputs:
+  ApiUrl:
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+  S3BucketName:
+    Value: !Ref ContractsBucket
+  SQSQueueUrl:
+    Value: !Ref IngestionQueue
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  DBClusterEndpoint:
+    Value: !GetAtt DBCluster.Endpoint.Address
+  RDSProxyEndpoint:
+    Value: !GetAtt DBProxy.Endpoint

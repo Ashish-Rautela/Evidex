@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "prod"
+  },
+  {
+    "ParameterKey": "DBMinCapacity",
+    "ParameterValue": "2"
+  },
+  {
+    "ParameterKey": "DBMaxCapacity",
+    "ParameterValue": "16"
+  }
+]
