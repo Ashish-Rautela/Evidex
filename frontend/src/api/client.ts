@@ -1,5 +1,5 @@
 const fetchApi = async (path: string, options: RequestInit) => {
-  const baseUrl = import.meta.env.VITE_API_URL || '';
+  const baseUrl = import.meta.env.VITE_API_URL || localStorage.getItem('api_url') || '';
   const token = localStorage.getItem('id_token');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   
