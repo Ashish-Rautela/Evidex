@@ -7,3 +7,4 @@ samconfig.toml
 cdk.out/
 .DS_Store
 coverage/
+env.json

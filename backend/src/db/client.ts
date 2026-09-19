@@ -184,15 +184,14 @@ const ensureReady = async () => {
 
 export const db = new Proxy({} as Pool, {
   get: (target, prop) => {
-    if (prop === 'connect') {
-      return async () => {
+    // Intercept async methods that need the pool to be ready
+    if (prop === 'connect' || prop === 'query') {
+      return async (...args: any[]) => {
         await ensureReady();
-        return pool.connect();
+        return (pool as any)[prop](...args);
       };
     }
-    // This is a bit tricky with Proxy on an uninitialized object.
-    // However, in this application, `query` is mostly used via export const query.
-    // For direct access to `db.xxx`, we should ensure it's initialized.
+    // For any other property, ensure pool is ready first
     if (!pool) {
       throw new Error("Database pool is not initialized. Await ensureReady() or use query()");
     }
