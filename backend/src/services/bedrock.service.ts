@@ -47,6 +47,14 @@ export async function rerankCandidates(
     topN: number
 ): Promise<RerankedCandidate[]> {
     if (candidates.length === 0) return [];
+
+    if (!env.BEDROCK_RERANK_MODEL_ARN) {
+        // Fallback: If no reranker is configured, just return the top N from the RRF hybrid search
+        return candidates.slice(0, topN).map(c => ({
+            ...c,
+            relevanceScore: 1.0 // Dummy score since we skipped reranking
+        }));
+    }
     
     const command = new RerankCommand({
         queries: [{ textQuery: { text: query }, type: 'TEXT' }],
