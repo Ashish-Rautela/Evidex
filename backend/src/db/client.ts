@@ -157,7 +157,7 @@ const ensureReady = async () => {
 };
 
 export const db = new Proxy(pool, {
-  get: (target, prop) => {
+  get: (_target, prop) => {
     // Intercept async methods that need the pool to be ready
     if (prop === 'connect' || prop === 'query') {
       return async (...args: any[]) => {
