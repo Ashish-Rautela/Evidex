@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useUpload } from '../hooks/useUpload';
 
 export function UploadForm({ onUploadComplete }: { onUploadComplete?: () => void }) {

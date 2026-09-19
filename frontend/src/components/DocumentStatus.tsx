@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
 
 export function DocumentStatus({ documentId, initialStatus }: { documentId: string, initialStatus: string }) {

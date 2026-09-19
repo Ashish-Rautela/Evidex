@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { SearchBar } from '../components/SearchBar';
 import { ResultsList } from '../components/ResultsList';
 import { useSearch } from '../hooks/useSearch';
