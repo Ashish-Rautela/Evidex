@@ -9,6 +9,6 @@
   },
   {
     "ParameterKey": "DBMaxCapacity",
-    "ParameterValue": "4"
+    "ParameterValue": "2"
   }
 ]

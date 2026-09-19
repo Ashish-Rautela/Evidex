@@ -14,7 +14,7 @@ Parameters:
     Default: 0.5
   DBMaxCapacity:
     Type: Number
-    Default: 8
+    Default: 2
 
 Globals:
   Function:

@@ -5,10 +5,10 @@
   },
   {
     "ParameterKey": "DBMinCapacity",
-    "ParameterValue": "2"
+    "ParameterValue": "0.5"
   },
   {
     "ParameterKey": "DBMaxCapacity",
-    "ParameterValue": "16"
+    "ParameterValue": "4"
   }
 ]
