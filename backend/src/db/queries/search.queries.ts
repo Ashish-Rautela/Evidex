@@ -26,10 +26,10 @@ export async function hybridSearchQuery(queryVector: number[], tenantId: string,
     ),
     lexical AS (
       SELECT chunk_id, clause_id, document_id, chunk_text, page_number, coordinates,
-        ROW_NUMBER() OVER (ORDER BY ts_rank_cd(tsv_content, plainto_tsquery('english', $4)) DESC) as rank
+        ROW_NUMBER() OVER (ORDER BY ts_rank_cd(to_tsvector('english', chunk_text), plainto_tsquery('english', $4)) DESC) as rank
       FROM document_chunks
       WHERE tenant_id = $2
-        AND tsv_content @@ plainto_tsquery('english', $4)
+        AND to_tsvector('english', chunk_text) @@ plainto_tsquery('english', $4)
         AND document_id IN (SELECT document_id FROM document_acl WHERE user_id = $3 AND permission IN ('READ','ADMIN'))
         ${docFilterLexical}
       LIMIT 100
