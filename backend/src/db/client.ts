@@ -8,6 +8,8 @@ let isPasswordFetched = false;
 let isInitialized = false;
 let initPromise: Promise<void> | null = null;
 
+import { Resolver } from 'dns/promises';
+
 const getDbPassword = async (): Promise<string> => {
   if (env.DB_SECRET_ARN && !isPasswordFetched) {
     const client = new SecretsManagerClient({ region: env.AWS_REGION });
@@ -21,19 +23,44 @@ const getDbPassword = async (): Promise<string> => {
   return dbPassword;
 };
 
-const poolConfig = {
-  host: env.DB_HOST,
-  port: env.DB_PORT,
-  database: env.DB_NAME,
-  user: env.DB_USER,
-  ssl: env.DB_HOST?.includes('localhost') ? false : { rejectUnauthorized: false },
+// Workaround for AWS Serverless Free-Tier Architecture:
+// AWS internal DNS resolves RDS endpoints to their Private IP if queried from within the same region.
+// Since our Lambdas are not in a VPC (to save costs on NAT Gateways), they cannot route to the private IP.
+// We force resolution via Google's Public DNS to get the Public IP.
+const resolvePublicIp = async (hostname: string): Promise<string> => {
+  if (hostname.includes('localhost') || hostname.match(/^[0-9.]+$/)) return hostname;
+  try {
+    const resolver = new Resolver();
+    resolver.setServers(['8.8.8.8', '1.1.1.1']);
+    const addresses = await resolver.resolve4(hostname);
+    return addresses[0] || hostname;
+  } catch (err) {
+    console.warn('Failed to resolve public IP, falling back to hostname:', err);
+    return hostname;
+  }
 };
 
-const pool = new Pool(poolConfig);
+let pool: Pool;
 
-pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
-});
+const initPool = async () => {
+  if (pool) return;
+  const hostIp = await resolvePublicIp(env.DB_HOST);
+  
+  const poolConfig = {
+    host: hostIp,
+    port: env.DB_PORT,
+    database: env.DB_NAME,
+    user: env.DB_USER,
+    password: dbPassword,
+    ssl: env.DB_HOST?.includes('localhost') ? false : { rejectUnauthorized: false },
+  };
+
+  pool = new Pool(poolConfig);
+  
+  pool.on('error', (err) => {
+    console.error('Unexpected error on idle client', err);
+  });
+};
 
 const initSchemaSql = `
   CREATE EXTENSION IF NOT EXISTS vector;
@@ -149,22 +176,27 @@ const initDb = async () => {
 
 const ensureReady = async () => {
   if (!isPasswordFetched && env.DB_SECRET_ARN) {
-    pool.options.password = await getDbPassword();
-  } else if (!pool.options.password) {
-    pool.options.password = dbPassword;
+    dbPassword = await getDbPassword();
   }
+  await initPool();
   await initDb();
 };
 
-export const db = new Proxy(pool, {
+export const db = new Proxy({} as Pool, {
   get: (target, prop) => {
     if (prop === 'connect') {
       return async () => {
         await ensureReady();
-        return target.connect();
+        return pool.connect();
       };
     }
-    return target[prop as keyof Pool];
+    // This is a bit tricky with Proxy on an uninitialized object.
+    // However, in this application, `query` is mostly used via export const query.
+    // For direct access to `db.xxx`, we should ensure it's initialized.
+    if (!pool) {
+      throw new Error("Database pool is not initialized. Await ensureReady() or use query()");
+    }
+    return (pool as any)[prop];
   }
 });
 
