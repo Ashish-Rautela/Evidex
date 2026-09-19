@@ -25,7 +25,6 @@ Globals:
         DB_NAME: evidex
         DB_USER: evidex_admin
         S3_BUCKET: !Ref ContractsBucket
-        AWS_REGION: !Ref AWS::Region
         SQS_QUEUE_URL: !Ref IngestionQueue
         BEDROCK_EMBED_MODEL_ID: 'amazon.titan-embed-text-v2:0'
 
