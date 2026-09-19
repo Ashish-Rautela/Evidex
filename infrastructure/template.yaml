@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2021-10-01
-Description: Evidex SAM Template
+Description: Evidex SAM Template - Self-contained serverless architecture
 
 Parameters:
   Environment:
@@ -9,10 +9,6 @@ Parameters:
     AllowedValues:
       - dev
       - prod
-  PrivateSubnetIds:
-    Type: CommaDelimitedList
-  VpcId:
-    Type: AWS::EC2::VPC::Id
   DBMinCapacity:
     Type: Number
     Default: 0.5
@@ -30,16 +26,226 @@ Globals:
     Environment:
       Variables:
         DB_SECRET_ARN: !Ref DBSecret
+        DB_HOST: !GetAtt DBCluster.Endpoint.Address
+        DB_PORT: '5432'
+        DB_NAME: evidex
+        DB_USER: evidex_admin
         S3_BUCKET: !Ref ContractsBucket
         AWS_REGION: !Ref AWS::Region
         SQS_QUEUE_URL: !Ref IngestionQueue
         BEDROCK_EMBED_MODEL_ID: 'amazon.titan-embed-text-v2:0'
-    VpcConfig:
-      SubnetIds: !Ref PrivateSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaSecurityGroup
 
 Resources:
+  # ============================================================================
+  # Networking (Self-Contained VPC for Aurora Serverless v2)
+  # ============================================================================
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'evidex-vpc-${Environment}'
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub 'evidex-igw-${Environment}'
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'evidex-subnet-a-${Environment}'
+
+  SubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'evidex-subnet-b-${Environment}'
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'evidex-rt-${Environment}'
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetA
+      RouteTableId: !Ref RouteTable
+
+  SubnetRouteTableAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetB
+      RouteTableId: !Ref RouteTable
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Aurora Serverless v2
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Aurora Serverless v2
+      SubnetIds:
+        - !Ref SubnetA
+        - !Ref SubnetB
+
+  # ============================================================================
+  # Aurora PostgreSQL Database (with pgvector)
+  # ============================================================================
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'evidex-db-secret-${Environment}'
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"evidex_admin"}'
+        GenerateStringKey: password
+        ExcludePunctuation: true
+
+  DBCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-postgresql
+      EngineVersion: '16.4'
+      DatabaseName: evidex
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref DBSecurityGroup
+      MasterUsername: !Join [ '', [ '{{resolve:secretsmanager:', !Ref DBSecret, ':SecretString:username}}' ] ]
+      MasterUserPassword: !Join [ '', [ '{{resolve:secretsmanager:', !Ref DBSecret, ':SecretString:password}}' ] ]
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: !Ref DBMinCapacity
+        MaxCapacity: !Ref DBMaxCapacity
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: aurora-postgresql
+      DBInstanceClass: db.serverless
+      DBClusterIdentifier: !Ref DBCluster
+      PubliclyAccessible: true
+
+  # ============================================================================
+  # Storage & Messaging
+  # ============================================================================
+  ContractsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'evidex-contracts-${AWS::AccountId}-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+
+  IngestionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'evidex-ingestion-queue-${Environment}'
+      VisibilityTimeout: 960
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt IngestionDLQ.Arn
+        maxReceiveCount: 3
+
+  IngestionDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'evidex-ingestion-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600
+
+  TextractCompleteTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'evidex-textract-complete-${Environment}'
+
+  TextractServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: textract.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TextractSNSPublish
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref TextractCompleteTopic
+
+  # ============================================================================
+  # Authentication (Amazon Cognito)
+  # ============================================================================
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub 'evidex-users-${Environment}'
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: tenant_id
+          AttributeDataType: String
+          Mutable: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub 'evidex-client-${Environment}'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  # ============================================================================
+  # API Gateway
+  # ============================================================================
   HttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
@@ -64,6 +270,9 @@ Resources:
                 - !Ref UserPoolClient
         DefaultAuthorizer: CognitoAuthorizer
 
+  # ============================================================================
+  # Lambda Functions (Running serverless without VPC constraints)
+  # ============================================================================
   UploadHandler:
     Type: AWS::Serverless::Function
     Properties:
@@ -91,7 +300,6 @@ Resources:
             QueueName: !GetAtt IngestionQueue.QueueName
         - SecretsManagerReadWrite:
             SecretArn: !Ref DBSecret
-        - AmazonVPCAccessExecutionRole
 
   SearchHandler:
     Type: AWS::Serverless::Function
@@ -118,7 +326,6 @@ Resources:
                 - bedrock:InvokeModel
                 - bedrock-agent-runtime:Rerank
               Resource: '*'
-        - AmazonVPCAccessExecutionRole
 
   DocumentHandler:
     Type: AWS::Serverless::Function
@@ -163,7 +370,6 @@ Resources:
             BucketName: !Ref ContractsBucket
         - SecretsManagerReadWrite:
             SecretArn: !Ref DBSecret
-        - AmazonVPCAccessExecutionRole
 
   ExtractHandler:
     Type: AWS::Serverless::Function
@@ -192,7 +398,6 @@ Resources:
               Action:
                 - iam:PassRole
               Resource: !GetAtt TextractServiceRole.Arn
-        - AmazonVPCAccessExecutionRole
 
   ChunkHandler:
     Type: AWS::Serverless::Function
@@ -216,191 +421,26 @@ Resources:
               Action:
                 - bedrock:InvokeModel
               Resource: '*'
-        - AmazonVPCAccessExecutionRole
 
-  IngestionQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: !Sub 'evidex-ingestion-queue-${Environment}'
-      VisibilityTimeout: 960
-      RedrivePolicy:
-        deadLetterTargetArn: !GetAtt IngestionDLQ.Arn
-        maxReceiveCount: 3
-
-  IngestionDLQ:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: !Sub 'evidex-ingestion-dlq-${Environment}'
-      MessageRetentionPeriod: 1209600
-
-  TextractCompleteTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: !Sub 'evidex-textract-complete-${Environment}'
-
-  ContractsBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub 'evidex-contracts-${AWS::AccountId}-${Environment}'
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      VersioningConfiguration:
-        Status: Enabled
-
-  UserPool:
-    Type: AWS::Cognito::UserPool
-    Properties:
-      UserPoolName: !Sub 'evidex-users-${Environment}'
-      AutoVerifiedAttributes:
-        - email
-      Schema:
-        - Name: tenant_id
-          AttributeDataType: String
-          Mutable: true
-
-  UserPoolClient:
-    Type: AWS::Cognito::UserPoolClient
-    Properties:
-      ClientName: !Sub 'evidex-client-${Environment}'
-      UserPoolId: !Ref UserPool
-      GenerateSecret: false
-      ExplicitAuthFlows:
-        - ALLOW_USER_SRP_AUTH
-        - ALLOW_REFRESH_TOKEN_AUTH
-
-  LambdaSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for Evidex Lambda functions
-      VpcId: !Ref VpcId
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          CidrIp: 0.0.0.0/0
-
-  TextractServiceRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: textract.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: TextractSNSPublish
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: sns:Publish
-                Resource: !Ref TextractCompleteTopic
-
-  DBSecret:
-    Type: AWS::SecretsManager::Secret
-    Properties:
-      Name: !Sub 'evidex-db-secret-${Environment}'
-      GenerateSecretString:
-        SecretStringTemplate: '{"username":"evidex_admin"}'
-        GenerateStringKey: password
-        ExcludePunctuation: true
-
-  DBSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for Aurora Serverless v2 and Proxy
-      VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 5432
-          ToPort: 5432
-          SourceSecurityGroupId: !Ref LambdaSecurityGroup
-
-  DBSubnetGroup:
-    Type: AWS::RDS::DBSubnetGroup
-    Properties:
-      DBSubnetGroupDescription: Subnet group for Aurora Serverless v2
-      SubnetIds: !Ref PrivateSubnetIds
-
-  DBCluster:
-    Type: AWS::RDS::DBCluster
-    Properties:
-      Engine: aurora-postgresql
-      EngineVersion: '16.4'
-      DatabaseName: evidex
-      DBSubnetGroupName: !Ref DBSubnetGroup
-      VpcSecurityGroupIds:
-        - !Ref DBSecurityGroup
-      MasterUsername: !Join [ '', [ '{{resolve:secretsmanager:', !Ref DBSecret, ':SecretString:username}}' ] ]
-      MasterUserPassword: !Join [ '', [ '{{resolve:secretsmanager:', !Ref DBSecret, ':SecretString:password}}' ] ]
-      ServerlessV2ScalingConfiguration:
-        MinCapacity: !Ref DBMinCapacity
-        MaxCapacity: !Ref DBMaxCapacity
-
-  DBInstance:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      Engine: aurora-postgresql
-      DBInstanceClass: db.serverless
-      DBClusterIdentifier: !Ref DBCluster
-
-  DBProxy:
-    Type: AWS::RDS::DBProxy
-    Properties:
-      DBProxyName: !Sub 'evidex-proxy-${Environment}'
-      EngineFamily: POSTGRESQL
-      RequireTLS: true
-      RoleArn: !GetAtt DBProxyRole.Arn
-      VpcSubnetIds: !Ref PrivateSubnetIds
-      VpcSecurityGroupIds:
-        - !Ref DBSecurityGroup
-      Auth:
-        - AuthScheme: SECRETS
-          IAMAuth: DISABLED
-          SecretArn: !Ref DBSecret
-
-  DBProxyRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: rds.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: DBProxySecretAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource: !Ref DBSecret
-
-  DBProxyTargetGroup:
-    Type: AWS::RDS::DBProxyTargetGroup
-    Properties:
-      DBProxyName: !Ref DBProxy
-      TargetGroupName: default
-      DBClusterIdentifiers:
-        - !Ref DBCluster
-
+# ============================================================================
+# Outputs
+# ============================================================================
 Outputs:
   ApiUrl:
+    Description: HTTP API Gateway endpoint URL
     Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
   S3BucketName:
+    Description: S3 Contracts Bucket Name
     Value: !Ref ContractsBucket
   SQSQueueUrl:
+    Description: SQS Ingestion Queue URL
     Value: !Ref IngestionQueue
   UserPoolId:
+    Description: Cognito User Pool ID
     Value: !Ref UserPool
   UserPoolClientId:
+    Description: Cognito User Pool Client ID
     Value: !Ref UserPoolClient
   DBClusterEndpoint:
+    Description: Aurora Serverless v2 Cluster Endpoint
     Value: !GetAtt DBCluster.Endpoint.Address
-  RDSProxyEndpoint:
-    Value: !GetAtt DBProxy.Endpoint
