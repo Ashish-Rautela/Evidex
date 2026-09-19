@@ -7,7 +7,7 @@ const envSchema = z.object({
   DB_USER: z.string().default('postgres'),
   DB_PASSWORD: z.string().default('postgres'),
   DB_SECRET_ARN: z.string().optional(),
-  AWS_REGION: z.string().default('us-east-1'),
+  AWS_REGION: z.string().default('ap-south-1'),
   S3_BUCKET: z.string(),
   SQS_QUEUE_URL: z.string(),
   SNS_TEXTRACT_TOPIC_ARN: z.string().optional(),

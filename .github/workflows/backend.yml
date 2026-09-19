@@ -79,7 +79,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-south-1' }}
 
       - uses: aws-actions/setup-sam@v2
         with:
@@ -104,6 +104,7 @@ jobs:
           sam deploy \
             --template-file .aws-sam/build/template.yaml \
             --stack-name evidex-${{ vars.ENVIRONMENT || 'prod' }} \
+            --region ${{ vars.AWS_REGION || 'ap-south-1' }} \
             --resolve-s3 \
             --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
             --no-confirm-changeset \
