@@ -31,7 +31,17 @@ export const handler = wrapHandler(async (event: APIGatewayProxyEventV2): Promis
   if (!documentId) return errorResponse(400, 'Missing document ID');
 
   const hasAccess = await checkAccess(documentId, requestingUserId);
-  if (!hasAccess) return errorResponse(403, 'Access denied');
+  if (!hasAccess) {
+    // If it's a DELETE request and the ACL is missing/corrupted, check if they are the uploader
+    if (method === 'DELETE') {
+      const doc = await getDocument(documentId, tenantId);
+      if (!doc || doc.uploadedBy !== requestingUserId) {
+        return errorResponse(403, 'Access denied');
+      }
+    } else {
+      return errorResponse(403, 'Access denied');
+    }
+  }
 
   if (method === 'GET' && route.includes('clauses')) {
     const clauses = await getClausesByDocument(documentId);

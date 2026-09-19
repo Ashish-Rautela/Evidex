@@ -38,12 +38,13 @@ export function DashboardPage() {
                 <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Pages</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {documents.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-gray-500">No documents found. Upload one to get started.</td>
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">No documents found. Upload one to get started.</td>
                 </tr>
               ) : (
                 documents.map((doc) => (
@@ -58,6 +59,24 @@ export function DashboardPage() {
                     </td>
                     <td className="px-6 py-4 text-gray-500">{doc.totalPages || '-'}</td>
                     <td className="px-6 py-4 text-gray-500">{new Date(doc.createdAt).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-right">
+                      <button 
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!window.confirm(`Delete ${doc.fileName}?`)) return;
+                          try {
+                            await apiClient.delete(`/api/v1/documents/${doc.documentId}`);
+                            fetchDocs();
+                          } catch (err) {
+                            console.error(err);
+                            alert('Failed to delete document');
+                          }
+                        }}
+                        className="text-red-500 hover:text-red-700 text-sm font-medium p-2"
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
