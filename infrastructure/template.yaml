@@ -390,6 +390,10 @@ Resources:
       CodeUri: ../backend/dist/
       MemorySize: 512
       Timeout: 60
+      Environment:
+        Variables:
+          SNS_TEXTRACT_TOPIC_ARN: !Ref TextractCompleteTopic
+          TEXTRACT_ROLE_ARN: !GetAtt TextractServiceRole.Arn
       Events:
         SQSTrigger:
           Type: SQS
@@ -397,10 +401,12 @@ Resources:
             Queue: !GetAtt IngestionQueue.Arn
             BatchSize: 1
       Policies:
-        - S3ReadPolicy:
+        - S3CrudPolicy:
             BucketName: !Ref ContractsBucket
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !GetAtt DBInstance.MasterUserSecret.SecretArn
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt TextractCompleteTopic.TopicName
         - Statement:
             - Effect: Allow
               Action:
