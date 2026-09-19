@@ -25,7 +25,7 @@ Globals:
     Timeout: 30
     Environment:
       Variables:
-        DB_SECRET_ARN: !Ref DBSecret
+        DB_SECRET_ARN: !GetAtt DBCluster.MasterUserSecret.SecretArn
         DB_HOST: !GetAtt DBCluster.Endpoint.Address
         DB_PORT: '5432'
         DB_NAME: evidex
@@ -134,15 +134,6 @@ Resources:
   # ============================================================================
   # Aurora PostgreSQL Database (with pgvector)
   # ============================================================================
-  DBSecret:
-    Type: AWS::SecretsManager::Secret
-    Properties:
-      Name: !Sub 'evidex-db-secret-${Environment}'
-      GenerateSecretString:
-        SecretStringTemplate: '{"username":"evidex_admin"}'
-        GenerateStringKey: password
-        ExcludePunctuation: true
-
   DBCluster:
     Type: AWS::RDS::DBCluster
     Properties:
@@ -152,8 +143,8 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       VpcSecurityGroupIds:
         - !Ref DBSecurityGroup
-      MasterUsername: !Join [ '', [ '{{resolve:secretsmanager:', !Ref DBSecret, ':SecretString:username}}' ] ]
-      MasterUserPassword: !Join [ '', [ '{{resolve:secretsmanager:', !Ref DBSecret, ':SecretString:password}}' ] ]
+      MasterUsername: evidex_admin
+      ManageMasterUserPassword: true
       ServerlessV2ScalingConfiguration:
         MinCapacity: !Ref DBMinCapacity
         MaxCapacity: !Ref DBMaxCapacity
@@ -299,7 +290,7 @@ Resources:
         - SQSSendMessagePolicy:
             QueueName: !GetAtt IngestionQueue.QueueName
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Ref DBSecret
+            SecretArn: !GetAtt DBCluster.MasterUserSecret.SecretArn
 
   SearchHandler:
     Type: AWS::Serverless::Function
@@ -319,7 +310,7 @@ Resources:
         - S3ReadPolicy:
             BucketName: !Ref ContractsBucket
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Ref DBSecret
+            SecretArn: !GetAtt DBCluster.MasterUserSecret.SecretArn
         - Statement:
             - Effect: Allow
               Action:
@@ -369,7 +360,7 @@ Resources:
         - S3ReadPolicy:
             BucketName: !Ref ContractsBucket
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Ref DBSecret
+            SecretArn: !GetAtt DBCluster.MasterUserSecret.SecretArn
 
   ExtractHandler:
     Type: AWS::Serverless::Function
@@ -388,7 +379,7 @@ Resources:
         - S3ReadPolicy:
             BucketName: !Ref ContractsBucket
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Ref DBSecret
+            SecretArn: !GetAtt DBCluster.MasterUserSecret.SecretArn
         - Statement:
             - Effect: Allow
               Action:
@@ -415,7 +406,7 @@ Resources:
         - S3CrudPolicy:
             BucketName: !Ref ContractsBucket
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Ref DBSecret
+            SecretArn: !GetAtt DBCluster.MasterUserSecret.SecretArn
         - Statement:
             - Effect: Allow
               Action:
