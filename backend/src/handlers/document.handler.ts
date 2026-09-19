@@ -5,6 +5,7 @@ import { parseBody } from '../middleware/validation.middleware.js';
 import { getDocument, listDocuments, deleteDocument } from '../db/queries/documents.queries.js';
 import { getClausesByDocument } from '../db/queries/clauses.queries.js';
 import { checkAccess, grantAccess } from '../db/queries/acl.queries.js';
+import { createDownloadUrl } from '../services/s3.service.js';
 import { z } from 'zod';
 
 const AclRequestSchema = z.object({
@@ -40,7 +41,8 @@ export const handler = wrapHandler(async (event: APIGatewayProxyEventV2): Promis
   if (method === 'GET') {
     const doc = await getDocument(documentId, tenantId);
     if (!doc) return errorResponse(404, 'Document not found');
-    return successResponse(doc);
+    const fileUrl = await createDownloadUrl(doc.storageKey);
+    return successResponse({ ...doc, fileUrl });
   }
 
   if (method === 'POST' && route.includes('acl')) {

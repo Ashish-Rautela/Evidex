@@ -36,6 +36,17 @@ export function ViewerPage() {
     if (documentId) fetchDoc();
   }, [documentId]);
 
+  const handleDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete this document?')) return;
+    try {
+      await apiClient.delete(`/api/v1/documents/${documentId}`);
+      window.location.href = '/'; // Go back to dashboard after deletion
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete document');
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-gray-500">Loading document...</div>;
   if (!docMeta) return <div className="p-8 text-center text-red-500">Failed to load document metadata.</div>;
 
@@ -46,10 +57,16 @@ export function ViewerPage() {
           <Link to="/" className="text-sm text-blue-600 hover:underline mr-4">&larr; Back to Dashboard</Link>
           <span className="font-semibold text-lg">{docMeta.fileName}</span>
         </div>
+        <button 
+          onClick={handleDelete}
+          className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1 rounded text-sm font-medium border border-red-200"
+        >
+          Delete Document
+        </button>
       </div>
       
       <ContractViewer 
-        pdfUrl={docMeta.fileUrl || ''} // Assumes API returns a presigned url or direct path
+        pdfUrl={docMeta.fileUrl || ''} 
         pageNumber={page}
         coordinates={coordinates}
       />
