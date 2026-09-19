@@ -31,22 +31,42 @@ export async function updateDocumentStatus(documentId: string, status: DocumentS
   await db.query(query, values);
 }
 
+function mapRowToDocument(row: any): Document {
+  return {
+    documentId: row.document_id,
+    tenantId: row.tenant_id,
+    fileName: row.file_name,
+    storageKey: row.storage_key,
+    fileSize: row.file_size,
+    checksum: row.checksum,
+    status: row.status,
+    errorMessage: row.error_message,
+    textractJobId: row.textract_job_id,
+    totalPages: row.total_pages,
+    uploadedBy: row.uploaded_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 export async function getDocument(documentId: string, tenantId: string): Promise<Document | null> {
   const query = 'SELECT * FROM documents WHERE document_id = $1 AND tenant_id = $2';
   const result = await db.query(query, [documentId, tenantId]);
-  return result.rows[0] || null;
+  if (!result.rows[0]) return null;
+  return mapRowToDocument(result.rows[0]);
 }
 
 export async function listDocuments(tenantId: string, limit: number, offset: number): Promise<Document[]> {
   const query = 'SELECT * FROM documents WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3';
   const result = await db.query(query, [tenantId, limit, offset]);
-  return result.rows;
+  return result.rows.map(mapRowToDocument);
 }
 
 export async function getDocumentByTextractJobId(jobId: string): Promise<Document | null> {
   const query = 'SELECT * FROM documents WHERE textract_job_id = $1';
   const result = await db.query(query, [jobId]);
-  return result.rows[0] || null;
+  if (!result.rows[0]) return null;
+  return mapRowToDocument(result.rows[0]);
 }
 
 export async function deleteDocument(documentId: string, tenantId: string): Promise<void> {
