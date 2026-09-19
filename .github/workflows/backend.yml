@@ -57,7 +57,7 @@ jobs:
   deploy:
     name: Deploy to AWS (SAM)
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && secrets.VPC_ID != '' && secrets.PRIVATE_SUBNET_IDS != ''
     runs-on: ubuntu-latest
 
     steps:
