@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+*.js.map
+.aws-sam/
+samconfig.toml
+cdk.out/
+.DS_Store
+coverage/
