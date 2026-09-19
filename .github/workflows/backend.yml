@@ -103,16 +103,28 @@ jobs:
 
       - name: Deploy SAM Stack
         run: |
+          REGION="${{ vars.AWS_REGION || 'ap-south-1' }}"
+          PG_VERSION=$(aws rds describe-db-engine-versions \
+            --engine postgres \
+            --region "$REGION" \
+            --query "reverse(sort_by(DBEngineVersions[?starts_with(EngineVersion, '16.')], &EngineVersion))[0].EngineVersion" \
+            --output text 2>/dev/null || echo "16.4")
+          if [ -z "$PG_VERSION" ] || [ "$PG_VERSION" = "None" ]; then
+            PG_VERSION="16.4"
+          fi
+          echo "Using PostgreSQL version in $REGION: $PG_VERSION"
+
           sam deploy \
             --template-file .aws-sam/build/template.yaml \
             --stack-name evidex-${{ vars.ENVIRONMENT || 'prod' }} \
-            --region ${{ vars.AWS_REGION || 'ap-south-1' }} \
+            --region "$REGION" \
             --resolve-s3 \
             --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
-              Environment=${{ vars.ENVIRONMENT || 'prod' }}
+              Environment=${{ vars.ENVIRONMENT || 'prod' }} \
+              PostgresVersion="$PG_VERSION"
 
       - name: Log failure details if deployment failed
         if: failure()

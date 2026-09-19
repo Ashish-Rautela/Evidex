@@ -9,6 +9,9 @@ Parameters:
     AllowedValues:
       - dev
       - prod
+  PostgresVersion:
+    Type: String
+    Default: '16.4'
 
 Globals:
   Function:
@@ -132,7 +135,7 @@ Resources:
     Properties:
       DBInstanceIdentifier: !Sub 'evidex-db-${Environment}'
       Engine: postgres
-      EngineVersion: '16'
+      EngineVersion: !Ref PostgresVersion
       DBInstanceClass: db.t4g.micro
       AllocatedStorage: 20
       DBName: evidex
