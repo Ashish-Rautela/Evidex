@@ -24,6 +24,7 @@ const poolConfig = {
   port: env.DB_PORT,
   database: env.DB_NAME,
   user: env.DB_USER,
+  ssl: env.DB_HOST?.includes('localhost') ? false : { rejectUnauthorized: false },
 };
 
 const pool = new Pool(poolConfig);
