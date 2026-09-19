@@ -1,7 +1,7 @@
 import { db } from '../client.js';
 import type { AclPermission } from '../../types/document.types.js';
 
-import { generateId } from '../utils/id.js';
+import { generateId } from '../../utils/id.js';
 
 export async function grantAccess(documentId: string, tenantId: string, userId: string, permission: AclPermission): Promise<void> {
   // Check if access already exists
