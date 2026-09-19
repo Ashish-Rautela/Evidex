@@ -124,7 +124,8 @@ jobs:
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               Environment=${{ vars.ENVIRONMENT || 'prod' }} \
-              PostgresVersion="$PG_VERSION"
+              PostgresVersion="$PG_VERSION" \
+              DBInstanceClass="${{ vars.DB_INSTANCE_CLASS || 'db.t3.micro' }}"
 
       - name: Log failure details if deployment failed
         if: failure()

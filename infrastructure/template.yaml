@@ -12,6 +12,9 @@ Parameters:
   PostgresVersion:
     Type: String
     Default: '16.4'
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro
 
 Globals:
   Function:
@@ -80,6 +83,17 @@ Resources:
         - Key: Name
           Value: !Sub 'evidex-subnet-b-${Environment}'
 
+  SubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [ 2, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'evidex-subnet-c-${Environment}'
+
   RouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -108,6 +122,12 @@ Resources:
       SubnetId: !Ref SubnetB
       RouteTableId: !Ref RouteTable
 
+  SubnetRouteTableAssociationC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetC
+      RouteTableId: !Ref RouteTable
+
   DBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -126,9 +146,10 @@ Resources:
       SubnetIds:
         - !Ref SubnetA
         - !Ref SubnetB
+        - !Ref SubnetC
 
   # ============================================================================
-  # RDS PostgreSQL Database (Free-Tier Eligible db.t4g.micro with pgvector)
+  # RDS PostgreSQL Database (Free-Tier Eligible db.t3.micro with pgvector)
   # ============================================================================
   DBInstance:
     Type: AWS::RDS::DBInstance
@@ -136,7 +157,8 @@ Resources:
       DBInstanceIdentifier: !Sub 'evidex-db-${Environment}'
       Engine: postgres
       EngineVersion: !Ref PostgresVersion
-      DBInstanceClass: db.t4g.micro
+      DBInstanceClass: !Ref DBInstanceClass
+      StorageType: gp3
       AllocatedStorage: 20
       DBName: evidex
       MasterUsername: evidex_admin
