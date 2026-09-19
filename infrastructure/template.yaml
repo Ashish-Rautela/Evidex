@@ -298,7 +298,7 @@ Resources:
             BucketName: !Ref ContractsBucket
         - SQSSendMessagePolicy:
             QueueName: !GetAtt IngestionQueue.QueueName
-        - SecretsManagerReadWrite:
+        - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref DBSecret
 
   SearchHandler:
@@ -318,7 +318,7 @@ Resources:
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref ContractsBucket
-        - SecretsManagerReadWrite:
+        - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref DBSecret
         - Statement:
             - Effect: Allow
@@ -368,7 +368,7 @@ Resources:
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref ContractsBucket
-        - SecretsManagerReadWrite:
+        - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref DBSecret
 
   ExtractHandler:
@@ -387,7 +387,7 @@ Resources:
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref ContractsBucket
-        - SecretsManagerReadWrite:
+        - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref DBSecret
         - Statement:
             - Effect: Allow
@@ -414,7 +414,7 @@ Resources:
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref ContractsBucket
-        - SecretsManagerReadWrite:
+        - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref DBSecret
         - Statement:
             - Effect: Allow
