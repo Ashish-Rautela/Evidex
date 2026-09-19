@@ -149,7 +149,7 @@ Resources:
   ContractsBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'evidex-contracts-${AWS::AccountId}-${Environment}'
+      BucketName: !Sub 'evidex-contracts-${AWS::AccountId}-${AWS::Region}-${Environment}'
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:

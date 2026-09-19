@@ -87,20 +87,22 @@ jobs:
 
       - run: sam build --template-file infrastructure/template.yaml
 
-      - name: Clean up failed stack if in ROLLBACK_COMPLETE
+      - name: Clean up failed stack if in ROLLBACK_COMPLETE or REVIEW_IN_PROGRESS
         run: |
           STACK_NAME="evidex-${{ vars.ENVIRONMENT || 'prod' }}"
-          STATUS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "NOT_FOUND")
+          REGION="${{ vars.AWS_REGION || 'ap-south-1' }}"
+          STATUS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "NOT_FOUND")
           echo "Current stack status: $STATUS"
-          if [ "$STATUS" = "ROLLBACK_COMPLETE" ]; then
-            echo "Deleting stack in ROLLBACK_COMPLETE state so it can be re-created..."
-            aws cloudformation delete-stack --stack-name "$STACK_NAME"
+          if [ "$STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STATUS" = "REVIEW_IN_PROGRESS" ]; then
+            echo "Deleting stack in $STATUS state so it can be re-created cleanly..."
+            aws cloudformation delete-stack --stack-name "$STACK_NAME" --region "$REGION"
             echo "Waiting for stack deletion to complete..."
-            aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME"
+            aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" --region "$REGION"
             echo "Stack deleted. Proceeding to fresh deploy."
           fi
 
-      - run: |
+      - name: Deploy SAM Stack
+        run: |
           sam deploy \
             --template-file .aws-sam/build/template.yaml \
             --stack-name evidex-${{ vars.ENVIRONMENT || 'prod' }} \
@@ -111,3 +113,16 @@ jobs:
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               Environment=${{ vars.ENVIRONMENT || 'prod' }}
+
+      - name: Log failure details if deployment failed
+        if: failure()
+        run: |
+          STACK_NAME="evidex-${{ vars.ENVIRONMENT || 'prod' }}"
+          REGION="${{ vars.AWS_REGION || 'ap-south-1' }}"
+          echo "Fetching recent CloudFormation events for $STACK_NAME in $REGION..."
+          aws cloudformation describe-stack-events \
+            --stack-name "$STACK_NAME" \
+            --region "$REGION" \
+            --max-items 25 \
+            --query "StackEvents[?ResourceStatusReason!=null].[LogicalResourceId, ResourceType, ResourceStatus, ResourceStatusReason]" \
+            --output table || true
