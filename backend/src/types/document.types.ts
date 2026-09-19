@@ -32,7 +32,7 @@ export interface DocumentAcl {
 export const UploadIntentRequestSchema = z.object({
   fileName: z.string().min(1).max(255),
   fileSize: z.number().positive().max(104857600),
-  checksum: z.string().optional().transform(val => (val && val.length === 64 ? val : '0'.repeat(64))),
+  checksum: z.string().default('0'.repeat(64)).transform(val => (val && val.length === 64 ? val : '0'.repeat(64))),
 });
 
 export type UploadIntentRequest = z.infer<typeof UploadIntentRequestSchema>;

@@ -14,7 +14,7 @@ async function handleUploadIntent(event: APIGatewayProxyEventV2): Promise<APIGat
   const body = parseBody(event.body, UploadIntentRequestSchema);
   const documentId = generateId();
   const { uploadUrl, storageKey } = await createUploadUrl(tenantId, documentId, body.fileName);
-  await insertDocument({ documentId, tenantId, fileName: body.fileName, storageKey, fileSize: body.fileSize, checksum: body.checksum, uploadedBy: userId });
+  await insertDocument({ documentId, tenantId, fileName: body.fileName, storageKey, fileSize: body.fileSize, checksum: body.checksum || '0'.repeat(64), uploadedBy: userId });
   await grantAccess(documentId, tenantId, userId, 'ADMIN');
   return successResponse({ documentId, uploadUrl, storageKey }, 201);
 }
