@@ -87,6 +87,19 @@ jobs:
 
       - run: sam build --template-file infrastructure/template.yaml
 
+      - name: Clean up failed stack if in ROLLBACK_COMPLETE
+        run: |
+          STACK_NAME="evidex-${{ vars.ENVIRONMENT || 'prod' }}"
+          STATUS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "NOT_FOUND")
+          echo "Current stack status: $STATUS"
+          if [ "$STATUS" = "ROLLBACK_COMPLETE" ]; then
+            echo "Deleting stack in ROLLBACK_COMPLETE state so it can be re-created..."
+            aws cloudformation delete-stack --stack-name "$STACK_NAME"
+            echo "Waiting for stack deletion to complete..."
+            aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME"
+            echo "Stack deleted. Proceeding to fresh deploy."
+          fi
+
       - run: |
           sam deploy \
             --template-file .aws-sam/build/template.yaml \
