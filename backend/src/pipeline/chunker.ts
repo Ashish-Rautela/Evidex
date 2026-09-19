@@ -1,0 +1,109 @@
+import type { ParentClause, ChildChunk } from '../types/chunk.types.js';
+import type { LegalNode } from './legal-parser.js';
+import { generateId } from '../utils/id.js';
+import { countTokens } from '../utils/token-counter.js';
+
+const CHUNK_SIZE = 200;
+const CHUNK_OVERLAP = 50;
+
+export interface ChunkResult {
+  parentClauses: ParentClause[];
+  childChunks: ChildChunk[];
+}
+
+export function generateChunks(nodes: LegalNode[], documentId: string, tenantId: string): ChunkResult {
+  const result: ChunkResult = {
+    parentClauses: [],
+    childChunks: []
+  };
+
+  const getLeafNodes = (node: LegalNode): LegalNode[] => {
+    if (!node.children || node.children.length === 0) {
+      return [node];
+    }
+    const leaves: LegalNode[] = [];
+    if (node.fullText) {
+       leaves.push(node);
+    }
+    for (const child of node.children) {
+      leaves.push(...getLeafNodes(child));
+    }
+    return leaves;
+  };
+
+  const leafNodes = nodes.flatMap(getLeafNodes);
+
+  for (const node of leafNodes) {
+    const clauseId = generateId();
+    const tokenCount = countTokens(node.fullText);
+
+    result.parentClauses.push({
+      clauseId,
+      documentId,
+      tenantId,
+      clauseIdentifier: `${node.type} ${node.identifier}`,
+      title: node.title,
+      fullText: node.fullText,
+      hierarchyPath: node.identifier,
+      startPage: node.startPage,
+      endPage: node.endPage,
+      tokenCount
+    });
+
+    const words = node.fullText.split(/\s+/);
+    if (words.length <= CHUNK_SIZE) {
+      result.childChunks.push({
+        chunkId: generateId(),
+        clauseId,
+        documentId,
+        tenantId,
+        chunkIndex: 0,
+        chunkText: node.fullText,
+        tokenCount: countTokens(node.fullText),
+        pageNumber: node.startPage,
+        coordinates: { x1: 0, y1: 0, x2: 1, y2: 1 },
+        embedding: [],
+        embeddingModel: 'amazon.titan-embed-text-v2:0'
+      });
+      continue;
+    }
+
+    let chunkIndex = 0;
+    for (let i = 0; i < words.length; i += (CHUNK_SIZE - CHUNK_OVERLAP)) {
+      const chunkWords = words.slice(i, i + CHUNK_SIZE);
+      const chunkText = chunkWords.join(' ');
+      
+      let pageNumber = node.startPage;
+      let minX = 1, minY = 1, maxX = 0, maxY = 0;
+      let foundBlock = false;
+
+      for (const block of node.blocks) {
+        if (chunkText.includes(block.text) || block.text.includes(chunkWords[0])) {
+          pageNumber = block.pageNumber;
+          foundBlock = true;
+          minX = Math.min(minX, block.geometry.left);
+          minY = Math.min(minY, block.geometry.top);
+          maxX = Math.max(maxX, block.geometry.left + block.geometry.width);
+          maxY = Math.max(maxY, block.geometry.top + block.geometry.height);
+        }
+      }
+
+      result.childChunks.push({
+        chunkId: generateId(),
+        clauseId,
+        documentId,
+        tenantId,
+        chunkIndex,
+        chunkText,
+        tokenCount: countTokens(chunkText),
+        pageNumber,
+        coordinates: foundBlock ? { x1: minX, y1: minY, x2: maxX, y2: maxY } : { x1: 0, y1: 0, x2: 1, y2: 1 },
+        embedding: [],
+        embeddingModel: 'amazon.titan-embed-text-v2:0'
+      });
+      chunkIndex++;
+    }
+  }
+
+  return result;
+}
