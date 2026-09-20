@@ -51,8 +51,11 @@ export function generateChunks(nodes: LegalNode[], documentId: string, tenantId:
   const leafNodes = nodes.flatMap(getLeafNodes);
 
   for (const node of leafNodes) {
+    const text = node.fullText?.trim() || '';
+    if (!text) continue;
+
     const clauseId = generateId();
-    const tokenCount = countTokens(node.fullText);
+    const tokenCount = countTokens(text);
 
     result.parentClauses.push({
       clauseId,
@@ -60,14 +63,16 @@ export function generateChunks(nodes: LegalNode[], documentId: string, tenantId:
       tenantId,
       clauseIdentifier: `${node.type} ${node.identifier}`,
       title: node.title,
-      fullText: node.fullText,
+      fullText: text,
       hierarchyPath: node.identifier,
       startPage: node.startPage,
       endPage: node.endPage,
       tokenCount
     });
 
-    const words = node.fullText.split(/\s+/);
+    const words = text.split(/\s+/).filter(w => w.length > 0);
+    if (words.length === 0) continue;
+
     if (words.length <= CHUNK_SIZE) {
       result.childChunks.push({
         chunkId: generateId(),
@@ -75,8 +80,8 @@ export function generateChunks(nodes: LegalNode[], documentId: string, tenantId:
         documentId,
         tenantId,
         chunkIndex: 0,
-        chunkText: node.fullText,
-        tokenCount: countTokens(node.fullText),
+        chunkText: text,
+        tokenCount: countTokens(text),
         pageNumber: node.startPage,
         coordinates: { x1: 0, y1: 0, x2: 1, y2: 1 },
         embedding: [],
@@ -90,7 +95,8 @@ export function generateChunks(nodes: LegalNode[], documentId: string, tenantId:
       const rawEnd = Math.min(i + CHUNK_SIZE, words.length);
       const snappedEnd = snapToSentenceBoundary(words, rawEnd);
       const chunkWords = words.slice(i, snappedEnd);
-      const chunkText = chunkWords.join(' ');
+      const chunkText = chunkWords.join(' ').trim();
+      if (!chunkText) continue;
       
       let pageNumber = node.startPage;
       let minX = 1, minY = 1, maxX = 0, maxY = 0;

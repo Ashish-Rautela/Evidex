@@ -77,10 +77,14 @@ async function embedWithCohere(texts: string[], role: EmbedRole): Promise<number
 
 // ── Titan Embed v2 ─────────────────────────────────────────────────────────────
 async function embedWithTitan(text: string, _role: EmbedRole): Promise<number[]> {
+    const cleaned = text.trim();
+    if (!cleaned) {
+        return new Array(1024).fill(0);
+    }
     return withRetry(async () => {
         const command = new InvokeModelCommand({
             modelId: env.BEDROCK_EMBED_MODEL_ID,
-            body: JSON.stringify({ inputText: text, dimensions: 1024, normalize: true }),
+            body: JSON.stringify({ inputText: cleaned, dimensions: 1024, normalize: true }),
             contentType: 'application/json',
             accept: 'application/json',
         });
@@ -108,7 +112,12 @@ export async function generateEmbeddingBatch(texts: string[], role: EmbedRole = 
     // Upgrade path: request provisioned throughput, then raise concurrency.
     const embeddings: number[][] = [];
     for (let i = 0; i < texts.length; i++) {
-        embeddings.push(await embedWithTitan(texts[i], role));
+        const text = texts[i]?.trim();
+        if (!text) {
+            embeddings.push(new Array(1024).fill(0));
+            continue;
+        }
+        embeddings.push(await embedWithTitan(text, role));
         if (i < texts.length - 1) {
             // Pacing delay (100ms) to ensure <= 8-9 TPS
             await new Promise(res => setTimeout(res, 100));
