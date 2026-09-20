@@ -1,4 +1,4 @@
-import type { SQSEvent } from 'aws-lambda';
+import type { SQSEvent, SNSEvent } from 'aws-lambda';
 import { getDocumentByTextractJobId, updateDocumentStatus } from '../db/queries/documents.queries.js';
 import { insertClauses } from '../db/queries/clauses.queries.js';
 import { insertChunks } from '../db/queries/chunks.queries.js';
@@ -8,7 +8,7 @@ import { parseLegalStructure } from '../pipeline/legal-parser.js';
 import { generateChunks } from '../pipeline/chunker.js';
 import { embedChunks } from '../pipeline/embedder.js';
 
-export const handler = async (event: any): Promise<void> => {
+export const handler = async (event: SQSEvent | SNSEvent | any): Promise<void> => {
   if (!event?.Records || !Array.isArray(event.Records)) return;
 
   for (const record of event.Records) {
