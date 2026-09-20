@@ -144,5 +144,25 @@ export async function hybridSearch(
         })
     );
 
-    return results;
+    // 6. Adaptive confidence filtering
+    // Drop anything below the minimum relevance floor.
+    // When the top result is highly confident (≥ 0.85), only keep results
+    // within 20% of the top score — so a pinpoint query like
+    // "definition of Confidential Information" returns 1 result, not 5.
+    const MIN_RELEVANCE_SCORE = 0.40;
+    const HIGH_CONFIDENCE_THRESHOLD = 0.85;
+    const HIGH_CONFIDENCE_WINDOW = 0.20; // keep results within 20% of top score
+
+    const filtered = results.filter(r => r.relevanceScore >= MIN_RELEVANCE_SCORE);
+
+    if (filtered.length === 0) return results; // nothing passed threshold; return all as fallback
+
+    const topScore = filtered[0].relevanceScore;
+
+    if (topScore >= HIGH_CONFIDENCE_THRESHOLD) {
+        // High confidence: only return results very close to the top result
+        return filtered.filter(r => r.relevanceScore >= topScore - HIGH_CONFIDENCE_WINDOW);
+    }
+
+    return filtered;
 }
