@@ -20,7 +20,7 @@ export async function hybridSearchQuery(queryVector: number[], tenantId: string,
         ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) as rank
       FROM document_chunks
       WHERE tenant_id = $2
-        AND (embedding <=> $1::vector) < 0.45
+        AND (embedding <=> $1::vector) < 0.55
         AND document_id IN (
           SELECT d.document_id FROM documents d
           JOIN document_acl a ON d.document_id = a.document_id

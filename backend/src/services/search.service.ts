@@ -19,6 +19,10 @@ const LEGAL_EXPANSIONS: Record<string, string> = {
     'confidential':         'confidential proprietary secret non-disclosure',
     'warranty':             'warranty representation guarantee indemnity',
     'assignment':           'assignment transfer delegation novation',
+    'combination product':  'combination product bundled product composite article',
+    'net sales':            'net sales gross revenue invoiced price deductions royalty base',
+    'royalty':              'royalty royalties milestone payment license fee',
+    'indemnify':            'indemnify indemnification hold harmless defend',
 };
 
 function expandLegalQuery(query: string): string {
@@ -30,6 +34,25 @@ function expandLegalQuery(query: string): string {
         }
     }
     return expansions.length > 0 ? `${query} ${expansions.join(' ')}` : query;
+}
+
+/**
+ * Decompose a compound query into focused sub-queries so each intent
+ * gets its own embedding — prevents one term drowning out another.
+ *
+ * Example: "What is the definition of Combination Product, and how are Net Sales calculated for it?"
+ *   → ["What is the definition of Combination Product",
+ *      "how are Net Sales calculated for it"]
+ */
+function decomposeQuery(query: string): string[] {
+    // Split on ", and" or " and " only before question-like clause starters
+    const parts = query
+        .split(/,?\s+and\s+(?=how|what|when|where|who|why|whether|is|are|does|can)/i)
+        .map(p => p.trim())
+        .filter(p => p.length > 8);
+
+    if (parts.length >= 2) return parts;
+    return [query];
 }
 
 export interface SearchResult {
@@ -52,26 +75,44 @@ export async function hybridSearch(
     limit: number, 
     documentIds?: string[]
 ): Promise<SearchResult[]> {
-    // 1. Expand query with legal synonyms, then generate query embedding with role='query'
-    const expandedQuery = expandLegalQuery(query);
-    const queryVector = await generateEmbedding(expandedQuery, 'query');
+    // 1. Decompose compound queries so each intent gets its own focused embedding.
+    //    e.g. "What is Combination Product AND how are Net Sales calculated?"
+    //    becomes two separate retrieval passes that are then merged.
+    const subQueries = decomposeQuery(query);
 
-    // 2. Perform hybrid search SQL using the dedicated query function
-    // We fetch a larger candidate pool (e.g., 100) and let the reranker pick the top `limit`
-    const rows = await hybridSearchQuery(queryVector, tenantId, userId, query, 100, documentIds);
+    // 2. For each sub-query: expand legal terms, embed with role='query', fetch candidates
+    const allRowsMap = new Map<string, any>(); // chunk_id → row (deduplicated)
 
-    if (rows.length === 0) return [];
+    for (const sub of subQueries) {
+        const expandedSub = expandLegalQuery(sub);
+        const queryVector = await generateEmbedding(expandedSub, 'query');
+        const rows = await hybridSearchQuery(queryVector, tenantId, userId, sub, 100, documentIds);
+        for (const row of rows) {
+            if (!allRowsMap.has(row.chunk_id)) {
+                allRowsMap.set(row.chunk_id, row);
+            } else {
+                // Keep the row with the higher rrf_score across sub-queries
+                const existing = allRowsMap.get(row.chunk_id);
+                if (Number(row.rrf_score) > Number(existing.rrf_score)) {
+                    allRowsMap.set(row.chunk_id, row);
+                }
+            }
+        }
+    }
 
-    // Deduplicate identical or near-identical chunk texts
+    const allRows = Array.from(allRowsMap.values());
+    if (allRows.length === 0) return [];
+
+    // 3. Deduplicate near-identical chunk texts
     const seenTexts = new Set<string>();
-    const uniqueRows = rows.filter(r => {
+    const uniqueRows = allRows.filter(r => {
         const key = (r.chunk_text || '').trim().substring(0, 80);
         if (seenTexts.has(key)) return false;
         seenTexts.add(key);
         return true;
     });
 
-    // 3. Rerank top candidates using Cross-Encoder or calibrated scoring
+    // 4. Rerank merged candidate pool against the original full query
     const candidates = uniqueRows.map(r => ({
         chunkId: r.chunk_id,
         chunkText: r.chunk_text,
@@ -82,10 +123,10 @@ export async function hybridSearch(
 
     const reranked = await rerankCandidates(query, candidates, limit);
 
-    // 4. Generate presigned URLs & map to SearchResult
+    // 5. Generate presigned URLs & map to SearchResult
     const results: SearchResult[] = await Promise.all(
         reranked.map(async (ranked) => {
-            const row = rows.find(r => r.chunk_id === ranked.chunkId)!;
+            const row = allRowsMap.get(ranked.chunkId)!;
             const downloadUrl = await createDownloadUrl(row.storage_key);
             
             return {
