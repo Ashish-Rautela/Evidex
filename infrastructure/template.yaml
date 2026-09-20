@@ -464,13 +464,14 @@ Resources:
       CodeUri: ../backend/dist/
       MemorySize: 1024
       Timeout: 900
-      ReservedConcurrentExecutions: 1
       Events:
         SQSTrigger:
           Type: SQS
           Properties:
             Queue: !GetAtt ChunkQueue.Arn
             BatchSize: 1
+            ScalingConfig:
+              MaximumConcurrency: 2
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref ContractsBucket
