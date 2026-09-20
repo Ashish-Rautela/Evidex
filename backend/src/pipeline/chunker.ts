@@ -2,7 +2,9 @@ import type { ParentClause, ChildChunk } from '../types/chunk.types.js';
 import type { LegalNode } from './legal-parser.js';
 import { generateId } from '../utils/id.js';
 import { countTokens } from '../utils/token-counter.js';
-import { env } from '../config/env.js';
+
+// Placeholder — overwritten by embedder.ts after embedding with the actual model ID.
+const EMBEDDING_MODEL_PLACEHOLDER = 'pending';
 
 // Smaller chunks (150 words) produce more focused embeddings for legal clauses.
 // Overlap of 30 words preserves cross-boundary context without excessive duplication.
@@ -78,7 +80,7 @@ export function generateChunks(nodes: LegalNode[], documentId: string, tenantId:
         pageNumber: node.startPage,
         coordinates: { x1: 0, y1: 0, x2: 1, y2: 1 },
         embedding: [],
-        embeddingModel: env.BEDROCK_EMBED_MODEL_ID
+        embeddingModel: EMBEDDING_MODEL_PLACEHOLDER
       });
       continue;
     }
@@ -126,7 +128,7 @@ export function generateChunks(nodes: LegalNode[], documentId: string, tenantId:
         pageNumber,
         coordinates: foundBlock ? { x1: minX, y1: minY, x2: maxX, y2: maxY } : { x1: 0, y1: 0, x2: 1, y2: 1 },
         embedding: [],
-        embeddingModel: env.BEDROCK_EMBED_MODEL_ID
+        embeddingModel: EMBEDDING_MODEL_PLACEHOLDER
       });
       chunkIndex++;
     }
