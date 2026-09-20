@@ -2,7 +2,10 @@ import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedroc
 import { BedrockAgentRuntimeClient, RerankCommand } from '@aws-sdk/client-bedrock-agent-runtime';
 import { env } from '../config/env.js';
 
-const bedrockRuntimeClient = new BedrockRuntimeClient({ region: env.AWS_REGION });
+const bedrockRuntimeClient = new BedrockRuntimeClient({
+    region: env.AWS_REGION,
+    maxAttempts: 8,
+});
 const bedrockAgentRuntimeClient = new BedrockAgentRuntimeClient({ region: env.AWS_REGION });
 
 export type EmbedRole = 'query' | 'document';
@@ -13,14 +16,14 @@ export type EmbedRole = 'query' | 'document';
 const isCohereModel = () => env.BEDROCK_EMBED_MODEL_ID.startsWith('cohere.embed');
 
 // ── Retry helper ───────────────────────────────────────────────────────────────
-async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, label = ''): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 5, label = ''): Promise<T> {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             return await fn();
         } catch (err: any) {
-            const isThrottle = err?.name === 'ThrottlingException' || err?.name === 'TooManyRequestsException';
+            const isThrottle = err?.name === 'ThrottlingException' || err?.name === 'TooManyRequestsException' || err?.$metadata?.httpStatusCode === 429;
             if (isThrottle && attempt < maxAttempts) {
-                const delay = Math.pow(2, attempt) * 1000; // 2s, 4s
+                const delay = Math.pow(2, attempt - 1) * 1000 + Math.floor(Math.random() * 500);
                 console.warn(`[Bedrock] Throttled ${label}. Retrying in ${delay}ms (attempt ${attempt}/${maxAttempts})`);
                 await new Promise(res => setTimeout(res, delay));
             } else {
@@ -65,7 +68,7 @@ async function embedWithCohere(texts: string[], role: EmbedRole): Promise<number
                 throw new Error(`[Cohere] Unexpected embeddings shape. Got: ${JSON.stringify(body).slice(0, 200)}`);
             }
             return floats;
-        }, 3, `Cohere embed batch ${i / BATCH_SIZE + 1}`);
+        }, 5, `Cohere embed batch ${i / BATCH_SIZE + 1}`);
 
         allEmbeddings.push(...result);
     }
@@ -74,15 +77,17 @@ async function embedWithCohere(texts: string[], role: EmbedRole): Promise<number
 
 // ── Titan Embed v2 ─────────────────────────────────────────────────────────────
 async function embedWithTitan(text: string, _role: EmbedRole): Promise<number[]> {
-    const command = new InvokeModelCommand({
-        modelId: env.BEDROCK_EMBED_MODEL_ID,
-        body: JSON.stringify({ inputText: text, dimensions: 1024, normalize: true }),
-        contentType: 'application/json',
-        accept: 'application/json',
-    });
-    const response = await bedrockRuntimeClient.send(command);
-    const body = JSON.parse(new TextDecoder().decode(response.body));
-    return body.embedding;
+    return withRetry(async () => {
+        const command = new InvokeModelCommand({
+            modelId: env.BEDROCK_EMBED_MODEL_ID,
+            body: JSON.stringify({ inputText: text, dimensions: 1024, normalize: true }),
+            contentType: 'application/json',
+            accept: 'application/json',
+        });
+        const response = await bedrockRuntimeClient.send(command);
+        const body = JSON.parse(new TextDecoder().decode(response.body));
+        return body.embedding;
+    }, 5, 'Titan embed');
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -99,11 +104,15 @@ export async function generateEmbeddingBatch(texts: string[], role: EmbedRole = 
         // Cohere supports true batching → much faster than sequential calls
         return embedWithCohere(texts, role);
     }
-    // Titan: sequential to stay under Bedrock on-demand TPS limit (~10)
+    // Titan: sequential with pacing delay to stay under Bedrock on-demand TPS limit (~10)
     // Upgrade path: request provisioned throughput, then raise concurrency.
     const embeddings: number[][] = [];
-    for (const text of texts) {
-        embeddings.push(await embedWithTitan(text, role));
+    for (let i = 0; i < texts.length; i++) {
+        embeddings.push(await embedWithTitan(texts[i], role));
+        if (i < texts.length - 1) {
+            // Pacing delay (100ms) to ensure <= 8-9 TPS
+            await new Promise(res => setTimeout(res, 100));
+        }
     }
     return embeddings;
 }

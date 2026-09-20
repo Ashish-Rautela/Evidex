@@ -1,4 +1,4 @@
-import type { SNSEvent } from 'aws-lambda';
+import type { SQSEvent } from 'aws-lambda';
 import { getDocumentByTextractJobId, updateDocumentStatus } from '../db/queries/documents.queries.js';
 import { insertClauses } from '../db/queries/clauses.queries.js';
 import { insertChunks } from '../db/queries/chunks.queries.js';
@@ -8,9 +8,11 @@ import { parseLegalStructure } from '../pipeline/legal-parser.js';
 import { generateChunks } from '../pipeline/chunker.js';
 import { embedChunks } from '../pipeline/embedder.js';
 
-export const handler = async (event: SNSEvent): Promise<void> => {
+export const handler = async (event: SQSEvent): Promise<void> => {
   for (const record of event.Records) {
-    const message = JSON.parse(record.Sns.Message);
+    const raw = JSON.parse(record.body);
+    // ponytail: handle both direct SQS message and SNS-over-SQS envelope
+    const message = raw.Message ? JSON.parse(raw.Message) : raw;
     const jobId = message.JobId;
     const status = message.Status;
     

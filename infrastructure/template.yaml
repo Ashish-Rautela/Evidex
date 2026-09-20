@@ -232,6 +232,46 @@ Resources:
                 Action: sns:Publish
                 Resource: !Ref TextractCompleteTopic
 
+  ChunkQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "evidex-chunk-queue-${Environment}"
+      VisibilityTimeout: 960
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ChunkDLQ.Arn
+        maxReceiveCount: 3
+
+  ChunkDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "evidex-chunk-dlq-${Environment}"
+      MessageRetentionPeriod: 1209600
+
+  ChunkQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref ChunkQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt ChunkQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref TextractCompleteTopic
+
+  ChunkQueueSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref TextractCompleteTopic
+      Endpoint: !GetAtt ChunkQueue.Arn
+      Protocol: sqs
+      RawMessageDelivery: false
+
   # ============================================================================
   # Authentication (Amazon Cognito)
   # ============================================================================
@@ -424,11 +464,13 @@ Resources:
       CodeUri: ../backend/dist/
       MemorySize: 1024
       Timeout: 900
+      ReservedConcurrentExecutions: 1
       Events:
-        SNSTrigger:
-          Type: SNS
+        SQSTrigger:
+          Type: SQS
           Properties:
-            Topic: !Ref TextractCompleteTopic
+            Queue: !GetAtt ChunkQueue.Arn
+            BatchSize: 1
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref ContractsBucket
