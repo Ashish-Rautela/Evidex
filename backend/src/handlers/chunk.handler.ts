@@ -8,15 +8,34 @@ import { parseLegalStructure } from '../pipeline/legal-parser.js';
 import { generateChunks } from '../pipeline/chunker.js';
 import { embedChunks } from '../pipeline/embedder.js';
 
-export const handler = async (event: SQSEvent): Promise<void> => {
+export const handler = async (event: any): Promise<void> => {
+  if (!event?.Records || !Array.isArray(event.Records)) return;
+
   for (const record of event.Records) {
-    const raw = JSON.parse(record.body);
-    // ponytail: handle both direct SQS message and SNS-over-SQS envelope
-    const message = raw.Message ? JSON.parse(raw.Message) : raw;
-    const jobId = message.JobId;
-    const status = message.Status;
+    let message: any;
+    try {
+      if (record.Sns?.Message) {
+        // Direct SNS event
+        message = typeof record.Sns.Message === 'string' ? JSON.parse(record.Sns.Message) : record.Sns.Message;
+      } else if (record.body) {
+        // SQS event (which may wrap an SNS notification or be direct JSON)
+        const parsedBody = JSON.parse(record.body);
+        message = parsedBody?.Message ? (typeof parsedBody.Message === 'string' ? JSON.parse(parsedBody.Message) : parsedBody.Message) : parsedBody;
+      } else {
+        message = record;
+      }
+    } catch (parseErr) {
+      console.error('Failed to parse message record:', parseErr, record);
+      continue;
+    }
+
+    const jobId = message?.JobId;
+    const status = message?.Status;
     
-    if (!jobId) continue;
+    if (!jobId) {
+      console.warn('Skipping record with missing JobId:', message);
+      continue;
+    }
     
     const doc = await getDocumentByTextractJobId(jobId);
     if (!doc) {
