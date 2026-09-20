@@ -8,13 +8,9 @@ const bedrockAgentRuntimeClient = new BedrockAgentRuntimeClient({ region: env.AW
 export type EmbedRole = 'query' | 'document';
 
 // ── Model detection ────────────────────────────────────────────────────────────
-// Cohere Embed v3: uses native `input_type` (no text prefix needed), supports
-//   batching up to 96 texts per call → faster ingestion, better accuracy.
-// Titan Embed v2:  no native input_type → use text prefix fallback.
+// Cohere Embed v3: uses native `input_type`, supports batching up to 96 texts per call.
+// Titan Embed v2:  processes raw text directly via `inputText` without instruction prefix.
 const isCohereModel = () => env.BEDROCK_EMBED_MODEL_ID.startsWith('cohere.embed');
-
-// Titan-only fallback prefix (ignored when using Cohere)
-const TITAN_QUERY_PREFIX = 'Represent this legal search query to find relevant contract clauses: ';
 
 // ── Retry helper ───────────────────────────────────────────────────────────────
 async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, label = ''): Promise<T> {
@@ -77,11 +73,10 @@ async function embedWithCohere(texts: string[], role: EmbedRole): Promise<number
 }
 
 // ── Titan Embed v2 ─────────────────────────────────────────────────────────────
-async function embedWithTitan(text: string, role: EmbedRole): Promise<number[]> {
-    const inputText = role === 'query' ? `${TITAN_QUERY_PREFIX}${text}` : text;
+async function embedWithTitan(text: string, _role: EmbedRole): Promise<number[]> {
     const command = new InvokeModelCommand({
         modelId: env.BEDROCK_EMBED_MODEL_ID,
-        body: JSON.stringify({ inputText, dimensions: 1024, normalize: true }),
+        body: JSON.stringify({ inputText: text, dimensions: 1024, normalize: true }),
         contentType: 'application/json',
         accept: 'application/json',
     });
@@ -125,6 +120,40 @@ export interface RerankedCandidate extends RerankCandidate {
     relevanceScore: number;
 }
 
+/**
+ * Calibrated relevance scoring when Bedrock Cross-Encoder reranker ARN is not set.
+ * Maps lexical presence and dense similarity to a realistic [0, 1] relevance score.
+ * - Both lexical & dense match: high confidence (0.70 – 0.98).
+ * - Lexical match only: 0.70.
+ * - Dense only >= 0.65: genuine semantic paraphrase (0.65 – 0.92).
+ * - Dense only 0.58–0.65: moderate similarity (0.52 – 0.58).
+ * - Dense only < 0.58: background noise / random projection; dropped (< 0.20).
+ */
+export function computeFallbackScore(c: {
+    isLexicalMatch?: boolean;
+    denseSimilarity?: number;
+}): number {
+    const dense = c.denseSimilarity ?? 0;
+    const isLexical = Boolean(c.isLexicalMatch);
+
+    let score = 0;
+    if (isLexical && dense >= 0.50) {
+        score = Math.min(0.98, Math.max(0.70, dense * 1.25));
+    } else if (isLexical) {
+        score = 0.70;
+    } else if (dense >= 0.65) {
+        score = Math.min(0.92, dense);
+    } else if (dense >= 0.58) {
+        score = dense * 0.9;
+    } else if (dense > 0.40) {
+        score = (dense - 0.40) * 1.0;
+    } else {
+        score = 0;
+    }
+
+    return Math.round(score * 100) / 100;
+}
+
 export async function rerankCandidates(
     query: string, 
     candidates: RerankCandidate[], 
@@ -134,25 +163,10 @@ export async function rerankCandidates(
 
     if (!env.BEDROCK_RERANK_MODEL_ARN) {
         // Fallback: If no reranker is configured, score based on actual similarity and lexical match quality
-        return candidates.slice(0, topN).map((c) => {
-            let score = 0.50;
-            if (c.isLexicalMatch && c.denseSimilarity && c.denseSimilarity > 0) {
-                // High confidence: both keyword match and semantic similarity
-                score = Math.min(0.98, Math.max(0.68, c.denseSimilarity * 1.25));
-            } else if (c.denseSimilarity && c.denseSimilarity > 0) {
-                // Semantic match
-                score = Math.min(0.92, Math.max(0.42, c.denseSimilarity));
-            } else if (c.isLexicalMatch) {
-                // Keyword match only
-                score = 0.72;
-            } else if (c.rrfScore) {
-                score = Math.min(0.85, Math.max(0.40, (c.rrfScore / 0.0328) * 0.85));
-            }
-            return {
-                ...c,
-                relevanceScore: Math.round(score * 100) / 100
-            };
-        });
+        return candidates.slice(0, topN).map((c) => ({
+            ...c,
+            relevanceScore: computeFallbackScore(c)
+        })).sort((a, b) => b.relevanceScore - a.relevanceScore);
     }
     
     const command = new RerankCommand({
