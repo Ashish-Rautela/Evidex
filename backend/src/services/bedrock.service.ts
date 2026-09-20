@@ -20,15 +20,12 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 }
 
 export async function generateEmbeddingBatch(texts: string[]): Promise<number[][]> {
-    const BATCH_SIZE = 25;
+    // ponytail: sequential to stay under Bedrock on-demand TPS limit (~10).
+    // Upgrade path: request provisioned throughput, then raise concurrency.
     const embeddings: number[][] = [];
-    
-    for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-        const batch = texts.slice(i, i + BATCH_SIZE);
-        const batchEmbeddings = await Promise.all(batch.map(text => generateEmbedding(text)));
-        embeddings.push(...batchEmbeddings);
+    for (const text of texts) {
+        embeddings.push(await generateEmbedding(text));
     }
-    
     return embeddings;
 }
 
