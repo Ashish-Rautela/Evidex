@@ -32,6 +32,7 @@ export async function generateEmbeddingBatch(texts: string[]): Promise<number[][
 export interface RerankCandidate {
     chunkId: string;
     chunkText: string;
+    rrfScore?: number;
 }
 
 export interface RerankedCandidate extends RerankCandidate {
@@ -46,11 +47,17 @@ export async function rerankCandidates(
     if (candidates.length === 0) return [];
 
     if (!env.BEDROCK_RERANK_MODEL_ARN) {
-        // Fallback: If no reranker is configured, just return the top N from the RRF hybrid search
-        return candidates.slice(0, topN).map(c => ({
-            ...c,
-            relevanceScore: 1.0 // Dummy score since we skipped reranking
-        }));
+        // Fallback: If no reranker is configured, score proportionally based on RRF hybrid search score
+        const topScore = candidates[0]?.rrfScore || 0.0328;
+        return candidates.slice(0, topN).map((c, index) => {
+            const score = c.rrfScore && topScore > 0
+                ? Math.max(0.4, Math.min(0.99, (c.rrfScore / topScore) * 0.95))
+                : Math.max(0.4, 0.95 - index * 0.05);
+            return {
+                ...c,
+                relevanceScore: Math.round(score * 100) / 100
+            };
+        });
     }
     
     const command = new RerankCommand({

@@ -36,9 +36,9 @@ export function ResultsList({ results }: { results: SearchResult[] }) {
           </div>
           
           <div className="text-gray-700 my-5 text-sm bg-gray-50/80 p-5 rounded-xl italic border-l-4 border-blue-400 leading-relaxed group-hover:bg-white transition-colors">
-            {result.parentClauseText ? 
-              (result.parentClauseText.length > 250 ? result.parentClauseText.substring(0, 250) + '...' : result.parentClauseText)
-              : result.matchedChunkText.substring(0, 250) + '...'}
+            {result.matchedChunkText ? 
+              (result.matchedChunkText.length > 300 ? result.matchedChunkText.substring(0, 300) + '...' : result.matchedChunkText)
+              : (result.parentClauseText ? result.parentClauseText.substring(0, 300) + '...' : '')}
           </div>
 
           <Link

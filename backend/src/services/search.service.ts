@@ -34,7 +34,8 @@ export async function hybridSearch(
     // 3. Rerank top candidates using Cross-Encoder
     const candidates = rows.map(r => ({
         chunkId: r.chunk_id,
-        chunkText: r.chunk_text
+        chunkText: r.chunk_text,
+        rrfScore: Number(r.rrf_score) || 0
     }));
 
     const reranked = await rerankCandidates(query, candidates, limit);

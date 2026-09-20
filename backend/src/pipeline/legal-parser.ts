@@ -12,16 +12,16 @@ export interface LegalNode {
 }
 
 const PATTERNS = {
-  SUBSECTION: /^(\d+\.\d+\.\d+)\s+(.+)/,
-  SECTION:    /^(\d+\.\d+)\s+(.+)/,
+  SUBSECTION: /^(?:(?:Sub-?section|Clause)\s+)?(\d{1,2}\.\d{1,2}\.\d{1,2})\.?\s+([A-Z].*)/,
+  SECTION:    /^(?:(?:Section|SECTION|Sec\.|Clause)\s+(\d+(?:\.\d{1,2})?)|(\d{1,2}\.\d{1,2}))\.?\s+([A-Z].*)/,
   ARTICLE:    /^(?:ARTICLE|Article)\s+(\d+|[IVXLCDM]+)[\s.:—-]+(.+)/,
-  SCHEDULE:   /^(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z0-9]+)[\s.:—-]*(.*)/,
+  SCHEDULE:   /^(?:Schedule|Exhibit|Annex|Appendix)\s+([A-Z0-9]+)[\s.:—-]*(.*)/i,
 };
 
 export function parseLegalStructure(pages: PageContent[]): LegalNode[] {
   const nodes: LegalNode[] = [];
   let currentNode: LegalNode | null = null;
-  let hasMatches = false;
+  let structuralMatchCount = 0;
 
   const finalizeNode = () => {
     if (currentNode) {
@@ -44,11 +44,13 @@ export function parseLegalStructure(pages: PageContent[]): LegalNode[] {
         const match = text.match(regex);
         if (match) {
           finalizeNode();
-          hasMatches = true;
+          structuralMatchCount++;
+          const identifier = (type === 'SECTION') ? (match[1] || match[2]) : match[1];
+          const title = (type === 'SECTION') ? (match[3]?.trim() || '') : (match[2]?.trim() || '');
           currentNode = {
             type: type as LegalNode['type'],
-            identifier: match[1],
-            title: match[2]?.trim() || '',
+            identifier: identifier || '1',
+            title: title || '',
             fullText: text,
             startPage: page.pageNumber,
             endPage: page.pageNumber,
@@ -61,7 +63,19 @@ export function parseLegalStructure(pages: PageContent[]): LegalNode[] {
       }
 
       if (!matched) {
-        if (currentNode) {
+        if (!currentNode) {
+          // ponytail: capture preamble/intro text before first section so it is not discarded
+          currentNode = {
+            type: 'PARAGRAPH',
+            identifier: 'Preamble',
+            title: 'Preamble',
+            fullText: text,
+            startPage: page.pageNumber,
+            endPage: page.pageNumber,
+            children: [],
+            blocks: [line]
+          };
+        } else {
           currentNode.fullText += '\n' + text;
           currentNode.endPage = Math.max(currentNode.endPage, page.pageNumber);
           currentNode.blocks.push(line);
@@ -72,7 +86,11 @@ export function parseLegalStructure(pages: PageContent[]): LegalNode[] {
 
   finalizeNode();
 
-  if (!hasMatches && pages.length > 0) {
+  // If no structural matches, or in large documents where matches are sparse/incidental (e.g. casebooks, court judgments),
+  // fall back to page-by-page paragraph nodes for accurate search and page-level retrieval.
+  const isStructured = structuralMatchCount >= (pages.length <= 5 ? 1 : 3);
+
+  if (!isStructured && pages.length > 0) {
     return pages.map(page => ({
       type: 'PARAGRAPH',
       identifier: `P${page.pageNumber}`,
@@ -109,6 +127,8 @@ export function parseLegalStructure(pages: PageContent[]): LegalNode[] {
       } else {
         rootNodes.push(node);
       }
+    } else {
+      rootNodes.push(node);
     }
   }
 

@@ -77,14 +77,24 @@ export function generateChunks(nodes: LegalNode[], documentId: string, tenantId:
       let minX = 1, minY = 1, maxX = 0, maxY = 0;
       let foundBlock = false;
 
-      for (const block of node.blocks) {
-        if (chunkText.includes(block.text) || block.text.includes(chunkWords[0])) {
-          pageNumber = block.pageNumber;
-          foundBlock = true;
-          minX = Math.min(minX, block.geometry.left);
-          minY = Math.min(minY, block.geometry.top);
-          maxX = Math.max(maxX, block.geometry.left + block.geometry.width);
-          maxY = Math.max(maxY, block.geometry.top + block.geometry.height);
+      // Match blocks whose text actually overlaps with this chunk
+      const sample = chunkText.slice(0, 40).trim();
+      const matchingBlocks = node.blocks.filter(b => {
+        if (!b.text) return false;
+        const trimmed = b.text.trim();
+        return (trimmed.length > 3 && chunkText.includes(trimmed)) || (sample.length > 3 && trimmed.includes(sample));
+      });
+
+      if (matchingBlocks.length > 0) {
+        pageNumber = matchingBlocks[0].pageNumber;
+        for (const block of matchingBlocks) {
+          if (block.pageNumber === pageNumber && block.geometry) {
+            foundBlock = true;
+            minX = Math.min(minX, block.geometry.left);
+            minY = Math.min(minY, block.geometry.top);
+            maxX = Math.max(maxX, block.geometry.left + block.geometry.width);
+            maxY = Math.max(maxY, block.geometry.top + block.geometry.height);
+          }
         }
       }
 
