@@ -2,6 +2,36 @@ import { generateEmbedding, rerankCandidates } from './bedrock.service.js';
 import { createDownloadUrl } from './s3.service.js';
 import { hybridSearchQuery } from '../db/queries/search.queries.js';
 
+// Legal abbreviation and synonym expansion to improve query embedding recall.
+const LEGAL_EXPANSIONS: Record<string, string> = {
+    'nda':                  'non-disclosure agreement confidentiality',
+    'ip':                   'intellectual property rights',
+    'sla':                  'service level agreement',
+    'tos':                  'terms of service',
+    'msa':                  'master service agreement',
+    'sow':                  'statement of work',
+    'liability':            'liability indemnification damages',
+    'termination':          'termination expiry notice period end of contract',
+    'payment':              'payment fees compensation remuneration',
+    'breach':               'breach default violation non-performance',
+    'governing law':        'governing law jurisdiction applicable law',
+    'force majeure':        'force majeure act of god unforeseen circumstances',
+    'confidential':         'confidential proprietary secret non-disclosure',
+    'warranty':             'warranty representation guarantee indemnity',
+    'assignment':           'assignment transfer delegation novation',
+};
+
+function expandLegalQuery(query: string): string {
+    const lower = query.toLowerCase();
+    const expansions: string[] = [];
+    for (const [term, expansion] of Object.entries(LEGAL_EXPANSIONS)) {
+        if (lower.includes(term)) {
+            expansions.push(expansion);
+        }
+    }
+    return expansions.length > 0 ? `${query} ${expansions.join(' ')}` : query;
+}
+
 export interface SearchResult {
     documentId: string;
     fileName: string;
@@ -22,8 +52,9 @@ export async function hybridSearch(
     limit: number, 
     documentIds?: string[]
 ): Promise<SearchResult[]> {
-    // 1. Generate query embedding
-    const queryVector = await generateEmbedding(query);
+    // 1. Expand query with legal synonyms, then generate query embedding with role='query'
+    const expandedQuery = expandLegalQuery(query);
+    const queryVector = await generateEmbedding(expandedQuery, 'query');
 
     // 2. Perform hybrid search SQL using the dedicated query function
     // We fetch a larger candidate pool (e.g., 100) and let the reranker pick the top `limit`

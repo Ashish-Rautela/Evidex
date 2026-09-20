@@ -20,7 +20,7 @@ export async function hybridSearchQuery(queryVector: number[], tenantId: string,
         ROW_NUMBER() OVER (ORDER BY embedding <=> $1::vector) as rank
       FROM document_chunks
       WHERE tenant_id = $2
-        AND (embedding <=> $1::vector) < 0.58
+        AND (embedding <=> $1::vector) < 0.45
         AND document_id IN (
           SELECT d.document_id FROM documents d
           JOIN document_acl a ON d.document_id = a.document_id
@@ -56,9 +56,9 @@ export async function hybridSearchQuery(queryVector: number[], tenantId: string,
         COALESCE(d.coordinates, l.coordinates) as coordinates,
         COALESCE(d.similarity, 0) as dense_similarity,
         CASE WHEN l.chunk_id IS NOT NULL THEN true ELSE false END as is_lexical_match,
-        (COALESCE(1.0/(60 + d.rank), 0) + COALESCE(1.0/(60 + l.rank), 0)) as rrf_score
+        (COALESCE(1.0/(20 + d.rank), 0) + COALESCE(1.0/(20 + l.rank), 0)) as rrf_score
       FROM dense d FULL OUTER JOIN lexical l ON d.chunk_id = l.chunk_id
-      WHERE l.chunk_id IS NOT NULL OR (d.similarity IS NOT NULL AND d.similarity >= 0.42)
+      WHERE l.chunk_id IS NOT NULL OR (d.similarity IS NOT NULL AND d.similarity >= 0.50)
     )
     SELECT f.*, p.clause_identifier, p.title as clause_title, p.full_text as parent_clause_text,
       doc.file_name, doc.storage_key

@@ -5,10 +5,17 @@ import { env } from '../config/env.js';
 const bedrockRuntimeClient = new BedrockRuntimeClient({ region: env.AWS_REGION });
 const bedrockAgentRuntimeClient = new BedrockAgentRuntimeClient({ region: env.AWS_REGION });
 
-export async function generateEmbedding(text: string): Promise<number[]> {
+// Asymmetric prefixes: query-side prefix improves recall for legal search queries.
+// Document-side prefix is applied in the embedder pipeline before calling this function.
+const QUERY_PREFIX = 'Represent this legal search query to find relevant contract clauses: ';
+
+export type EmbedRole = 'query' | 'document';
+
+export async function generateEmbedding(text: string, role: EmbedRole = 'document'): Promise<number[]> {
+    const inputText = role === 'query' ? `${QUERY_PREFIX}${text}` : text;
     const command = new InvokeModelCommand({
         modelId: env.BEDROCK_EMBED_MODEL_ID,
-        body: JSON.stringify({ inputText: text, dimensions: 1024, normalize: true }),
+        body: JSON.stringify({ inputText, dimensions: 1024, normalize: true }),
         contentType: 'application/json',
         accept: 'application/json'
     });
@@ -19,12 +26,12 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     return responseBody.embedding;
 }
 
-export async function generateEmbeddingBatch(texts: string[]): Promise<number[][]> {
+export async function generateEmbeddingBatch(texts: string[], role: EmbedRole = 'document'): Promise<number[][]> {
     // ponytail: sequential to stay under Bedrock on-demand TPS limit (~10).
     // Upgrade path: request provisioned throughput, then raise concurrency.
     const embeddings: number[][] = [];
     for (const text of texts) {
-        embeddings.push(await generateEmbedding(text));
+        embeddings.push(await generateEmbedding(text, role));
     }
     return embeddings;
 }

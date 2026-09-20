@@ -3,8 +3,22 @@ import type { LegalNode } from './legal-parser.js';
 import { generateId } from '../utils/id.js';
 import { countTokens } from '../utils/token-counter.js';
 
-const CHUNK_SIZE = 200;
-const CHUNK_OVERLAP = 50;
+// Smaller chunks (150 words) produce more focused embeddings for legal clauses.
+// Overlap of 30 words preserves cross-boundary context without excessive duplication.
+const CHUNK_SIZE = 150;
+const CHUNK_OVERLAP = 30;
+
+// Snap a word slice to the nearest sentence boundary to avoid mid-sentence splits.
+function snapToSentenceBoundary(words: string[], sliceEnd: number): number {
+    const sentenceEnd = /[.!?](?:["'])?$/;
+    // Search backwards up to 20 words for a sentence-ending word
+    for (let i = sliceEnd - 1; i >= Math.max(0, sliceEnd - 20); i--) {
+        if (sentenceEnd.test(words[i])) {
+            return i + 1;
+        }
+    }
+    return sliceEnd; // No boundary found; use original slice end
+}
 
 export interface ChunkResult {
   parentClauses: ParentClause[];
@@ -70,7 +84,9 @@ export function generateChunks(nodes: LegalNode[], documentId: string, tenantId:
 
     let chunkIndex = 0;
     for (let i = 0; i < words.length; i += (CHUNK_SIZE - CHUNK_OVERLAP)) {
-      const chunkWords = words.slice(i, i + CHUNK_SIZE);
+      const rawEnd = Math.min(i + CHUNK_SIZE, words.length);
+      const snappedEnd = snapToSentenceBoundary(words, rawEnd);
+      const chunkWords = words.slice(i, snappedEnd);
       const chunkText = chunkWords.join(' ');
       
       let pageNumber = node.startPage;
