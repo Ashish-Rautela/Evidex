@@ -31,11 +31,22 @@ export async function hybridSearch(
 
     if (rows.length === 0) return [];
 
-    // 3. Rerank top candidates using Cross-Encoder
-    const candidates = rows.map(r => ({
+    // Deduplicate identical or near-identical chunk texts
+    const seenTexts = new Set<string>();
+    const uniqueRows = rows.filter(r => {
+        const key = (r.chunk_text || '').trim().substring(0, 80);
+        if (seenTexts.has(key)) return false;
+        seenTexts.add(key);
+        return true;
+    });
+
+    // 3. Rerank top candidates using Cross-Encoder or calibrated scoring
+    const candidates = uniqueRows.map(r => ({
         chunkId: r.chunk_id,
         chunkText: r.chunk_text,
-        rrfScore: Number(r.rrf_score) || 0
+        rrfScore: Number(r.rrf_score) || 0,
+        denseSimilarity: Number(r.dense_similarity) || 0,
+        isLexicalMatch: Boolean(r.is_lexical_match)
     }));
 
     const reranked = await rerankCandidates(query, candidates, limit);

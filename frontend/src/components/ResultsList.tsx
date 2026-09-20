@@ -22,14 +22,24 @@ export function ResultsList({ results }: { results: SearchResult[] }) {
                   </span>
                 )}
               </h3>
-              <div className="flex items-center gap-2 mt-2 text-sm text-gray-500 font-medium">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                {result.fileName} 
-                <span className="text-gray-300">•</span> 
-                Page {result.pageNumber}
+              <div className="flex flex-wrap items-center gap-2 mt-2 text-sm">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-800 font-medium text-xs border border-blue-100">
+                  <svg className="w-3.5 h-3.5 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                  {result.fileName}
+                </span>
+                <span className="text-gray-400">•</span> 
+                <span className="text-gray-600 font-medium text-xs bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
+                  Page {result.pageNumber}
+                </span>
               </div>
             </div>
-            <div className="bg-emerald-50 text-emerald-700 text-sm font-bold px-3 py-1 rounded-full border border-emerald-200/60 shadow-sm flex items-center gap-1">
+            <div className={`text-sm font-bold px-3 py-1 rounded-full border shadow-sm flex items-center gap-1 ${
+              result.relevanceScore >= 0.75 
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60' 
+                : result.relevanceScore >= 0.55 
+                  ? 'bg-blue-50 text-blue-700 border-blue-200/60' 
+                  : 'bg-amber-50 text-amber-700 border-amber-200/60'
+            }`}>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
               {(result.relevanceScore * 100).toFixed(0)}% Match
             </div>

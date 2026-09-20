@@ -33,6 +33,8 @@ export interface RerankCandidate {
     chunkId: string;
     chunkText: string;
     rrfScore?: number;
+    denseSimilarity?: number;
+    isLexicalMatch?: boolean;
 }
 
 export interface RerankedCandidate extends RerankCandidate {
@@ -47,12 +49,21 @@ export async function rerankCandidates(
     if (candidates.length === 0) return [];
 
     if (!env.BEDROCK_RERANK_MODEL_ARN) {
-        // Fallback: If no reranker is configured, score proportionally based on RRF hybrid search score
-        const topScore = candidates[0]?.rrfScore || 0.0328;
-        return candidates.slice(0, topN).map((c, index) => {
-            const score = c.rrfScore && topScore > 0
-                ? Math.max(0.4, Math.min(0.99, (c.rrfScore / topScore) * 0.95))
-                : Math.max(0.4, 0.95 - index * 0.05);
+        // Fallback: If no reranker is configured, score based on actual similarity and lexical match quality
+        return candidates.slice(0, topN).map((c) => {
+            let score = 0.50;
+            if (c.isLexicalMatch && c.denseSimilarity && c.denseSimilarity > 0) {
+                // High confidence: both keyword match and semantic similarity
+                score = Math.min(0.98, Math.max(0.68, c.denseSimilarity * 1.25));
+            } else if (c.denseSimilarity && c.denseSimilarity > 0) {
+                // Semantic match
+                score = Math.min(0.92, Math.max(0.42, c.denseSimilarity));
+            } else if (c.isLexicalMatch) {
+                // Keyword match only
+                score = 0.72;
+            } else if (c.rrfScore) {
+                score = Math.min(0.85, Math.max(0.40, (c.rrfScore / 0.0328) * 0.85));
+            }
             return {
                 ...c,
                 relevanceScore: Math.round(score * 100) / 100
