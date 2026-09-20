@@ -14,7 +14,7 @@ const envSchema = z.object({
   TEXTRACT_ROLE_ARN: z.string().optional(),
   COGNITO_USER_POOL_ID: z.string().optional(),
   COGNITO_CLIENT_ID: z.string().optional(),
-  BEDROCK_EMBED_MODEL_ID: z.string().default('amazon.titan-embed-text-v2:0'),
+  BEDROCK_EMBED_MODEL_ID: z.string().default('cohere.embed-english-v3'),
   BEDROCK_RERANK_MODEL_ARN: z.string().optional(),
 });
 

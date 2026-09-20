@@ -5,33 +5,78 @@ import { env } from '../config/env.js';
 const bedrockRuntimeClient = new BedrockRuntimeClient({ region: env.AWS_REGION });
 const bedrockAgentRuntimeClient = new BedrockAgentRuntimeClient({ region: env.AWS_REGION });
 
-// Asymmetric prefixes: query-side prefix improves recall for legal search queries.
-// Document-side prefix is applied in the embedder pipeline before calling this function.
-const QUERY_PREFIX = 'Represent this legal search query to find relevant contract clauses: ';
-
 export type EmbedRole = 'query' | 'document';
 
-export async function generateEmbedding(text: string, role: EmbedRole = 'document'): Promise<number[]> {
-    const inputText = role === 'query' ? `${QUERY_PREFIX}${text}` : text;
+// ── Model detection ────────────────────────────────────────────────────────────
+// Cohere Embed v3: uses native `input_type` (no text prefix needed), supports
+//   batching up to 96 texts per call → faster ingestion, better accuracy.
+// Titan Embed v2:  no native input_type → use text prefix fallback.
+const isCohereModel = () => env.BEDROCK_EMBED_MODEL_ID.startsWith('cohere.embed');
+
+// Titan-only fallback prefix (ignored when using Cohere)
+const TITAN_QUERY_PREFIX = 'Represent this legal search query to find relevant contract clauses: ';
+
+// ── Cohere Embed v3 ────────────────────────────────────────────────────────────
+async function embedWithCohere(texts: string[], role: EmbedRole): Promise<number[][]> {
+    // Cohere supports batches of up to 96; chunk to stay safe
+    const BATCH_SIZE = 48;
+    const allEmbeddings: number[][] = [];
+
+    for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+        const batch = texts.slice(i, i + BATCH_SIZE);
+        const command = new InvokeModelCommand({
+            modelId: env.BEDROCK_EMBED_MODEL_ID,
+            body: JSON.stringify({
+                texts: batch,
+                input_type: role === 'query' ? 'search_query' : 'search_document',
+                truncate: 'END',
+                embedding_types: ['float'],
+            }),
+            contentType: 'application/json',
+            accept: 'application/json',
+        });
+        const response = await bedrockRuntimeClient.send(command);
+        const body = JSON.parse(new TextDecoder().decode(response.body));
+        // Bedrock returns { embeddings: { float: [[...], ...] } }
+        const floats: number[][] = body.embeddings?.float ?? body.embeddings;
+        allEmbeddings.push(...floats);
+    }
+    return allEmbeddings;
+}
+
+// ── Titan Embed v2 ─────────────────────────────────────────────────────────────
+async function embedWithTitan(text: string, role: EmbedRole): Promise<number[]> {
+    const inputText = role === 'query' ? `${TITAN_QUERY_PREFIX}${text}` : text;
     const command = new InvokeModelCommand({
         modelId: env.BEDROCK_EMBED_MODEL_ID,
         body: JSON.stringify({ inputText, dimensions: 1024, normalize: true }),
         contentType: 'application/json',
-        accept: 'application/json'
+        accept: 'application/json',
     });
-    
     const response = await bedrockRuntimeClient.send(command);
-    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-    
-    return responseBody.embedding;
+    const body = JSON.parse(new TextDecoder().decode(response.body));
+    return body.embedding;
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────────
+export async function generateEmbedding(text: string, role: EmbedRole = 'document'): Promise<number[]> {
+    if (isCohereModel()) {
+        const results = await embedWithCohere([text], role);
+        return results[0];
+    }
+    return embedWithTitan(text, role);
 }
 
 export async function generateEmbeddingBatch(texts: string[], role: EmbedRole = 'document'): Promise<number[][]> {
-    // ponytail: sequential to stay under Bedrock on-demand TPS limit (~10).
+    if (isCohereModel()) {
+        // Cohere supports true batching → much faster than sequential calls
+        return embedWithCohere(texts, role);
+    }
+    // Titan: sequential to stay under Bedrock on-demand TPS limit (~10)
     // Upgrade path: request provisioned throughput, then raise concurrency.
     const embeddings: number[][] = [];
     for (const text of texts) {
-        embeddings.push(await generateEmbedding(text, role));
+        embeddings.push(await embedWithTitan(text, role));
     }
     return embeddings;
 }
