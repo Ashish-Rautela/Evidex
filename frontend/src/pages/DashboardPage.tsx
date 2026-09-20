@@ -70,7 +70,7 @@ export function DashboardPage() {
                       {doc.fileName}
                     </td>
                     <td className="px-6 py-5">
-                      <DocumentStatus documentId={doc.documentId} initialStatus={doc.status} />
+                      <DocumentStatus documentId={doc.documentId} initialStatus={doc.status} errorMessage={doc.errorMessage} />
                     </td>
                     <td className="px-6 py-5 text-gray-500 font-medium">{doc.totalPages || '-'}</td>
                     <td className="px-6 py-5 text-gray-500">{new Date(doc.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</td>

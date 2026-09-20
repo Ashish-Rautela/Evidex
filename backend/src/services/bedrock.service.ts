@@ -16,30 +16,62 @@ const isCohereModel = () => env.BEDROCK_EMBED_MODEL_ID.startsWith('cohere.embed'
 // Titan-only fallback prefix (ignored when using Cohere)
 const TITAN_QUERY_PREFIX = 'Represent this legal search query to find relevant contract clauses: ';
 
+// ── Retry helper ───────────────────────────────────────────────────────────────
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, label = ''): Promise<T> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            return await fn();
+        } catch (err: any) {
+            const isThrottle = err?.name === 'ThrottlingException' || err?.name === 'TooManyRequestsException';
+            if (isThrottle && attempt < maxAttempts) {
+                const delay = Math.pow(2, attempt) * 1000; // 2s, 4s
+                console.warn(`[Bedrock] Throttled ${label}. Retrying in ${delay}ms (attempt ${attempt}/${maxAttempts})`);
+                await new Promise(res => setTimeout(res, delay));
+            } else {
+                console.error(`[Bedrock] Failed ${label} after ${attempt} attempt(s):`, err?.message ?? err);
+                throw err;
+            }
+        }
+    }
+    throw new Error(`[Bedrock] Exhausted retries for ${label}`);
+}
+
 // ── Cohere Embed v3 ────────────────────────────────────────────────────────────
 async function embedWithCohere(texts: string[], role: EmbedRole): Promise<number[][]> {
-    // Cohere supports batches of up to 96; chunk to stay safe
     const BATCH_SIZE = 48;
     const allEmbeddings: number[][] = [];
 
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
         const batch = texts.slice(i, i + BATCH_SIZE);
-        const command = new InvokeModelCommand({
-            modelId: env.BEDROCK_EMBED_MODEL_ID,
-            body: JSON.stringify({
-                texts: batch,
-                input_type: role === 'query' ? 'search_query' : 'search_document',
-                truncate: 'END',
-                embedding_types: ['float'],
-            }),
-            contentType: 'application/json',
-            accept: 'application/json',
-        });
-        const response = await bedrockRuntimeClient.send(command);
-        const body = JSON.parse(new TextDecoder().decode(response.body));
-        // Bedrock returns { embeddings: { float: [[...], ...] } }
-        const floats: number[][] = body.embeddings?.float ?? body.embeddings;
-        allEmbeddings.push(...floats);
+        const result = await withRetry(async () => {
+            const command = new InvokeModelCommand({
+                modelId: env.BEDROCK_EMBED_MODEL_ID,
+                body: JSON.stringify({
+                    texts: batch,
+                    input_type: role === 'query' ? 'search_query' : 'search_document',
+                    truncate: 'END',
+                    // Do NOT send embedding_types — some Bedrock regions return
+                    // { embeddings: [[...]] } (flat), not { embeddings: { float: [[...]] } }
+                }),
+                contentType: 'application/json',
+                accept: 'application/json',
+            });
+            const response = await bedrockRuntimeClient.send(command);
+            const body = JSON.parse(new TextDecoder().decode(response.body));
+
+            // Cohere Bedrock returns one of these two shapes:
+            //   Shape A (no embedding_types): { embeddings: [[...], ...] }
+            //   Shape B (with embedding_types): { embeddings: { float: [[...], ...] } }
+            const raw = body.embeddings;
+            if (!raw) throw new Error(`[Cohere] No embeddings in response: ${JSON.stringify(body)}`);
+            const floats: number[][] = Array.isArray(raw) ? raw : (raw.float ?? raw.int8 ?? Object.values(raw)[0]);
+            if (!Array.isArray(floats) || floats.length !== batch.length) {
+                throw new Error(`[Cohere] Unexpected embeddings shape. Got: ${JSON.stringify(body).slice(0, 200)}`);
+            }
+            return floats;
+        }, 3, `Cohere embed batch ${i / BATCH_SIZE + 1}`);
+
+        allEmbeddings.push(...result);
     }
     return allEmbeddings;
 }

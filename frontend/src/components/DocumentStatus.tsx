@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
 
-export function DocumentStatus({ documentId, initialStatus }: { documentId: string, initialStatus: string }) {
+export function DocumentStatus({ documentId, initialStatus, errorMessage }: { documentId: string, initialStatus: string, errorMessage?: string }) {
   const [status, setStatus] = useState(initialStatus);
+  const [errorMsg, setErrorMsg] = useState<string | undefined>(errorMessage);
 
   useEffect(() => {
     if (status === 'READY' || status === 'FAILED') return;
@@ -11,9 +12,10 @@ export function DocumentStatus({ documentId, initialStatus }: { documentId: stri
       try {
         const doc = await apiClient.get(`/api/v1/documents/${documentId}`);
         setStatus(doc.status);
+        if (doc.errorMessage) setErrorMsg(doc.errorMessage);
       } catch (err) {
         console.error('Error fetching document status:', err);
-        setStatus('FAILED'); // Stop polling if document is inaccessible or broken
+        setStatus('FAILED');
       }
     }, 5000);
 
@@ -31,7 +33,10 @@ export function DocumentStatus({ documentId, initialStatus }: { documentId: stri
   };
 
   return (
-    <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${getBadgeStyle()}`}>
+    <span 
+      className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${getBadgeStyle()}`}
+      title={status === 'FAILED' ? errorMsg || 'Processing failed' : undefined}
+    >
       {status}
     </span>
   );
