@@ -76,8 +76,8 @@ export interface SearchResult {
  */
 export function filterByConfidence<T extends { relevanceScore: number }>(
     results: T[],
-    // ponytail: was 0.55, killed paraphrased queries. 0.35 lets moderate matches through; upgrade path: use Bedrock reranker.
-    minScore = 0.35,
+    // ponytail: 0.30 lets semantic matches with dense similarity >= 0.36 through
+    minScore = 0.30,
     highConfidenceThreshold = 0.85,
     highConfidenceWindow = 0.20
 ): T[] {

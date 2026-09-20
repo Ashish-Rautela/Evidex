@@ -161,10 +161,8 @@ export function computeFallbackScore(c: {
         score = 0.70;
     } else if (dense >= 0.60) {
         score = Math.min(0.92, dense);
-    } else if (dense >= 0.50) {
-        score = dense * 0.9;
-    } else if (dense > 0.35) {
-        score = (dense - 0.30) * 1.0;
+    } else if (dense >= 0.35) {
+        score = dense * 0.85;
     } else {
         score = 0;
     }
