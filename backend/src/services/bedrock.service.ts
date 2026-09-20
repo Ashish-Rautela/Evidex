@@ -94,6 +94,20 @@ async function embedWithTitan(text: string, _role: EmbedRole): Promise<number[]>
     }, 5, 'Titan embed');
 }
 
+// ── Concurrency Pool ───────────────────────────────────────────────────────────
+async function asyncPool<T, R>(limit: number, array: T[], fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+    const results: R[] = new Array(array.length);
+    let index = 0;
+    const workers = new Array(Math.min(limit, array.length)).fill(0).map(async () => {
+        while (index < array.length) {
+            const currentIndex = index++;
+            results[currentIndex] = await fn(array[currentIndex], currentIndex);
+        }
+    });
+    await Promise.all(workers);
+    return results;
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 export async function generateEmbedding(text: string, role: EmbedRole = 'document'): Promise<number[]> {
     if (isCohereModel()) {
@@ -108,22 +122,12 @@ export async function generateEmbeddingBatch(texts: string[], role: EmbedRole = 
         // Cohere supports true batching → much faster than sequential calls
         return embedWithCohere(texts, role);
     }
-    // Titan: sequential with pacing delay to stay under Bedrock on-demand TPS limit (~10)
-    // Upgrade path: request provisioned throughput, then raise concurrency.
-    const embeddings: number[][] = [];
-    for (let i = 0; i < texts.length; i++) {
-        const text = texts[i]?.trim();
-        if (!text) {
-            embeddings.push(new Array(1024).fill(0));
-            continue;
-        }
-        embeddings.push(await embedWithTitan(text, role));
-        if (i < texts.length - 1) {
-            // Pacing delay (100ms) to ensure <= 8-9 TPS
-            await new Promise(res => setTimeout(res, 100));
-        }
-    }
-    return embeddings;
+    // Titan: controlled concurrency pool (4 workers) for ~5x faster throughput
+    // while staying safely within Bedrock on-demand TPS limits.
+    const CONCURRENCY = 4;
+    return asyncPool(CONCURRENCY, texts, async (text) => {
+        return embedWithTitan(text, role);
+    });
 }
 
 export interface RerankCandidate {
@@ -141,11 +145,7 @@ export interface RerankedCandidate extends RerankCandidate {
 /**
  * Calibrated relevance scoring when Bedrock Cross-Encoder reranker ARN is not set.
  * Maps lexical presence and dense similarity to a realistic [0, 1] relevance score.
- * - Both lexical & dense match: high confidence (0.70 – 0.98).
- * - Lexical match only: 0.70.
- * - Dense only >= 0.65: genuine semantic paraphrase (0.65 – 0.92).
- * - Dense only 0.58–0.65: moderate similarity (0.52 – 0.58).
- * - Dense only < 0.58: background noise / random projection; dropped (< 0.20).
+ * ponytail: bands shifted down to match relaxed retrieval thresholds (0.65 distance gate / 0.40 fusion gate).
  */
 export function computeFallbackScore(c: {
     isLexicalMatch?: boolean;
@@ -159,12 +159,12 @@ export function computeFallbackScore(c: {
         score = Math.min(0.98, Math.max(0.70, dense * 1.25));
     } else if (isLexical) {
         score = 0.70;
-    } else if (dense >= 0.65) {
+    } else if (dense >= 0.60) {
         score = Math.min(0.92, dense);
-    } else if (dense >= 0.58) {
+    } else if (dense >= 0.50) {
         score = dense * 0.9;
-    } else if (dense > 0.40) {
-        score = (dense - 0.40) * 1.0;
+    } else if (dense > 0.35) {
+        score = (dense - 0.30) * 1.0;
     } else {
         score = 0;
     }

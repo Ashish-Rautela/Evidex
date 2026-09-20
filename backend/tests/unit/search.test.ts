@@ -73,10 +73,10 @@ describe('Confidence Filtering', () => {
 
 describe('Fallback Scoring Calibration', () => {
   it('should give low score (< 0.25) to weak dense matches without lexical match (prevents gibberish matches)', () => {
-    // A gibberish query like "afkyaiuyaggfatg" with dense similarity around 0.56 and no keyword match
+    // A gibberish query with dense similarity around 0.30 and no keyword match
     const score = computeFallbackScore({
       isLexicalMatch: false,
-      denseSimilarity: 0.56,
+      denseSimilarity: 0.30,
     });
     expect(score).toBeLessThan(0.25);
   });

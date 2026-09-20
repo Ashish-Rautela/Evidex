@@ -70,13 +70,14 @@ export interface SearchResult {
 
 /**
  * Adaptive confidence filtering.
- * - Drops any result below minScore (default 0.55).
+ * - Drops any result below minScore (default 0.35).
  * - When top result is highly confident (>= 0.85), keeps only results within 20% of top score.
  * - If no results meet minScore, returns [] (never returns irrelevant fallback).
  */
 export function filterByConfidence<T extends { relevanceScore: number }>(
     results: T[],
-    minScore = 0.55,
+    // ponytail: was 0.55, killed paraphrased queries. 0.35 lets moderate matches through; upgrade path: use Bedrock reranker.
+    minScore = 0.35,
     highConfidenceThreshold = 0.85,
     highConfidenceWindow = 0.20
 ): T[] {

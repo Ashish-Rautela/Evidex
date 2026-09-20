@@ -6,10 +6,10 @@ import { countTokens } from '../utils/token-counter.js';
 // Placeholder — overwritten by embedder.ts after embedding with the actual model ID.
 const EMBEDDING_MODEL_PLACEHOLDER = 'pending';
 
-// Smaller chunks (150 words) produce more focused embeddings for legal clauses.
-// Overlap of 30 words preserves cross-boundary context without excessive duplication.
-const CHUNK_SIZE = 150;
-const CHUNK_OVERLAP = 30;
+// Optimal chunk size (250 words) produces cohesive embeddings for legal paragraphs without fragmentation.
+// Overlap of 50 words preserves cross-boundary context.
+const CHUNK_SIZE = 250;
+const CHUNK_OVERLAP = 50;
 
 // Snap a word slice to the nearest sentence boundary to avoid mid-sentence splits.
 function snapToSentenceBoundary(words: string[], sliceEnd: number): number {
