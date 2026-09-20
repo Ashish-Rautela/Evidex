@@ -67,15 +67,17 @@ export async function startDocumentAnalysis(storageKey: string, documentId: stri
     ContentType: 'application/json',
   }));
 
-  // Publish completion to SNS to trigger ChunkHandler
+  return documentId;
+}
+
+// ponytail: split from startDocumentAnalysis to let the caller save textractJobId before notifying
+export async function notifyExtractionComplete(documentId: string): Promise<void> {
   if (env.SNS_TEXTRACT_TOPIC_ARN) {
     await sns.send(new PublishCommand({
       TopicArn: env.SNS_TEXTRACT_TOPIC_ARN,
       Message: JSON.stringify({ JobId: documentId, Status: 'SUCCEEDED' }),
     }));
   }
-
-  return documentId;
 }
 
 export async function getDocumentAnalysis(jobId: string): Promise<any[]> {

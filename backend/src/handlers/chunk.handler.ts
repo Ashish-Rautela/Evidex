@@ -44,6 +44,7 @@ export const handler = async (event: SNSEvent): Promise<void> => {
       
       await updateDocumentStatus(doc.documentId, 'READY', { totalPages: pages.length });
     } catch (err) {
+      console.error(`ChunkHandler failed for document ${doc.documentId}:`, err);
       await updateDocumentStatus(doc.documentId, 'FAILED', { errorMessage: (err as Error).message });
     }
   }
