@@ -18,13 +18,27 @@ const envSchema = z.object({
   BEDROCK_RERANK_MODEL_ARN: z.string().optional(),
 });
 
-let parsedEnv: z.infer<typeof envSchema>;
+type Env = z.infer<typeof envSchema>;
 
-try {
-  parsedEnv = envSchema.parse(process.env);
-} catch (error) {
-  console.error('Environment validation error:', error);
-  throw error;
-}
+// Lazy initialization: env is validated only when a property is first accessed,
+// NOT at import time. This means importing env.ts in unit tests never triggers
+// Zod validation unless the test actually reads an env property.
+let _cache: Env | undefined;
 
-export const env = parsedEnv;
+const getEnv = (): Env => {
+  if (!_cache) {
+    try {
+      _cache = envSchema.parse(process.env);
+    } catch (error) {
+      console.error('Environment validation error:', error);
+      throw error;
+    }
+  }
+  return _cache;
+};
+
+export const env = new Proxy({} as Env, {
+  get(_target, prop: string) {
+    return getEnv()[prop as keyof Env];
+  },
+});
