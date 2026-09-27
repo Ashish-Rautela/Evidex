@@ -1,5 +1,15 @@
 import { useState, useRef } from 'react';
 import { useUpload } from '../hooks/useUpload';
+import { 
+  FileText, 
+  FolderUp, 
+  UploadCloud, 
+  CheckCircle2, 
+  AlertCircle, 
+  Loader2, 
+  X,
+  FileCheck2
+} from 'lucide-react';
 
 interface FileStatus {
   file: File;
@@ -55,37 +65,49 @@ export function UploadForm({ onUploadComplete }: { onUploadComplete?: () => void
   };
 
   const clearDone = () => setQueue(prev => prev.filter(f => f.status !== 'done'));
+  const removeFile = (index: number) => setQueue(prev => prev.filter((_, i) => i !== index));
+
   const queued = queue.filter(f => f.status === 'queued').length;
   const done = queue.filter(f => f.status === 'done').length;
   const errored = queue.filter(f => f.status === 'error').length;
 
   return (
     <div className="space-y-4">
-      {/* Drop zone */}
+      {/* Drop zone in ink style */}
       <div
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
-        className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:bg-gray-50 transition"
+        className="border-2 border-dashed border-black rounded-lg p-8 text-center bg-white shadow-[3px_3px_0px_#000] transition-colors hover:bg-neutral-50"
       >
-        <svg className="w-12 h-12 text-gray-400 mb-3 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-        </svg>
-        <p className="text-gray-500 font-medium mb-3">Drag & drop PDFs here, or choose an option below</p>
+        <div className="w-12 h-12 mx-auto mb-3 border-2 border-black rounded-full flex items-center justify-center bg-neutral-100 shadow-[2px_2px_0px_#000]">
+          <UploadCloud className="w-6 h-6 text-black" strokeWidth={2} />
+        </div>
+        <h3 className="font-mono font-bold text-base text-black tracking-tight mb-1">
+          Drop PDF Contracts Here
+        </h3>
+        <p className="text-neutral-600 text-sm font-medium mb-5">
+          Ingest legal agreements into your semantic intelligence index
+        </p>
 
-        <div className="flex justify-center gap-3">
-          {/* Select individual files */}
+        <div className="flex justify-center gap-3 flex-wrap">
+          {/* Select individual files - NO EMOJIS, Lucide icons */}
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition"
+            className="ink-btn bg-white hover:bg-neutral-100 text-black px-4 py-2 rounded text-sm font-mono font-bold flex items-center gap-2"
           >
-            📄 Select Files
+            <FileText className="w-4 h-4 text-black" strokeWidth={2} />
+            Select Files
           </button>
-          {/* Select entire folder */}
+
+          {/* Select entire folder - NO EMOJIS, Lucide icons */}
           <button
+            type="button"
             onClick={() => folderInputRef.current?.click()}
-            className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition"
+            className="ink-btn bg-white hover:bg-neutral-100 text-black px-4 py-2 rounded text-sm font-mono font-bold flex items-center gap-2"
           >
-            📁 Select Folder
+            <FolderUp className="w-4 h-4 text-black" strokeWidth={2} />
+            Select Folder
           </button>
         </div>
 
@@ -103,58 +125,92 @@ export function UploadForm({ onUploadComplete }: { onUploadComplete?: () => void
           type="file"
           accept="application/pdf"
           multiple
-          // @ts-ignore – webkitdirectory is not in React types but works in all browsers
+          // @ts-ignore – webkitdirectory is standard for folder picking
           webkitdirectory=""
           onChange={handleFileChange}
           className="hidden"
         />
       </div>
 
-      {/* Queue */}
+      {/* Queue in retro ink window format */}
       {queue.length > 0 && (
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="border-2 border-black rounded-lg overflow-hidden bg-white shadow-[3px_3px_0px_#000]">
           {/* Summary bar */}
-          <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200 text-sm">
-            <span className="text-gray-600">
-              {queue.length} file{queue.length !== 1 ? 's' : ''} —{' '}
-              <span className="text-green-600">{done} done</span>
-              {errored > 0 && <span className="text-red-500 ml-1">{errored} failed</span>}
+          <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-100 border-b-2 border-black font-mono text-xs">
+            <span className="font-bold text-black flex items-center gap-2">
+              <FileCheck2 className="w-4 h-4" />
+              {queue.length} file{queue.length !== 1 ? 's' : ''} queued
+              {done > 0 && <span className="bg-black text-white px-1.5 py-0.5 rounded font-mono text-[10px]">{done} ready</span>}
+              {errored > 0 && <span className="border border-black px-1.5 py-0.5 rounded font-mono text-[10px] text-red-600">{errored} failed</span>}
             </span>
             <div className="flex gap-2">
               {done > 0 && (
-                <button onClick={clearDone} className="text-gray-400 hover:text-gray-600 text-xs">
-                  Clear done
+                <button 
+                  onClick={clearDone} 
+                  className="font-bold text-black hover:underline cursor-pointer"
+                >
+                  [ Clear done ]
                 </button>
               )}
             </div>
           </div>
 
           {/* File list */}
-          <ul className="max-h-52 overflow-y-auto divide-y divide-gray-100">
+          <ul className="max-h-56 overflow-y-auto divide-y divide-black/10 font-mono text-xs">
             {queue.map((item, i) => (
-              <li key={i} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span className="truncate text-gray-700 max-w-xs" title={item.file.name}>
+              <li key={i} className="flex items-center justify-between px-4 py-2.5 hover:bg-neutral-50">
+                <span className="truncate text-black font-medium max-w-sm flex items-center gap-2" title={item.file.name}>
+                  <FileText className="w-3.5 h-3.5 shrink-0 text-black" />
                   {item.file.name}
                 </span>
-                <span className="ml-4 shrink-0">
-                  {item.status === 'queued'   && <span className="text-gray-400">Queued</span>}
-                  {item.status === 'uploading' && <span className="text-blue-500 animate-pulse">Uploading…</span>}
-                  {item.status === 'done'      && <span className="text-green-500">✓ Done</span>}
-                  {item.status === 'error'     && <span className="text-red-500" title={item.error}>✗ Failed</span>}
-                </span>
+                <div className="ml-4 shrink-0 flex items-center gap-3">
+                  {item.status === 'queued' && (
+                    <span className="text-neutral-500 font-mono">Queued</span>
+                  )}
+                  {item.status === 'uploading' && (
+                    <span className="text-black font-bold flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Ingesting…
+                    </span>
+                  )}
+                  {item.status === 'done' && (
+                    <span className="text-black font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Done
+                    </span>
+                  )}
+                  {item.status === 'error' && (
+                    <span className="text-red-600 font-bold flex items-center gap-1" title={item.error}>
+                      <AlertCircle className="w-3.5 h-3.5" /> Failed
+                    </span>
+                  )}
+                  {item.status === 'queued' && !isRunning && (
+                    <button
+                      onClick={() => removeFile(i)}
+                      className="text-neutral-400 hover:text-black transition-colors"
+                      title="Remove from queue"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
 
           {/* Upload button */}
           {queued > 0 && (
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
+            <div className="px-4 py-3 bg-neutral-100 border-t-2 border-black">
               <button
                 onClick={handleUploadAll}
                 disabled={isRunning}
-                className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition font-medium text-sm"
+                className="ink-btn w-full py-2.5 bg-black text-white hover:bg-neutral-900 disabled:opacity-50 font-mono font-bold text-sm tracking-wide"
               >
-                {isRunning ? 'Uploading…' : `Upload ${queued} file${queued !== 1 ? 's' : ''}`}
+                {isRunning ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Ingesting {queued} Contract{queued !== 1 ? 's' : ''}…
+                  </span>
+                ) : (
+                  `Execute Ingestion (${queued} Document${queued !== 1 ? 's' : ''}) →`
+                )}
               </button>
             </div>
           )}

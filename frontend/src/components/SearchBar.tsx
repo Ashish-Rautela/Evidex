@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Search, Loader2 } from 'lucide-react';
 
 interface Props {
   onSearch: (query: string) => void;
@@ -16,26 +17,29 @@ export function SearchBar({ onSearch, isSearching }: Props) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-2 w-full">
+    <form onSubmit={handleSubmit} className="flex items-center gap-2 w-full bg-white border-2 border-black rounded-lg p-1.5 shadow-[4px_4px_0px_#000]">
+      <div className="pl-3 text-black">
+        <Search className="w-5 h-5 stroke-[2.5]" />
+      </div>
       <input
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Ask a question about your contracts..."
-        className="flex-1 bg-transparent border-none px-6 py-4 focus:outline-none text-gray-900 placeholder-gray-400 text-lg"
+        placeholder="Query contracts (e.g. 'What is the liability cap?')..."
+        className="flex-1 bg-transparent border-none px-3 py-3 focus:outline-none text-black placeholder-neutral-500 font-mono text-base"
       />
       <button
         type="submit"
         disabled={isSearching || !query.trim()}
-        className="mr-2 px-8 py-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 font-semibold flex items-center justify-center min-w-[140px] transition-all shadow-md hover:shadow-lg"
+        className="ink-btn px-6 py-2.5 bg-black text-white hover:bg-neutral-800 disabled:opacity-40 font-mono font-bold text-sm tracking-wide rounded"
       >
         {isSearching ? (
           <span className="flex items-center gap-2">
-            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-            Searching...
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Searching…
           </span>
         ) : (
-          'Search'
+          'Search →'
         )}
       </button>
     </form>

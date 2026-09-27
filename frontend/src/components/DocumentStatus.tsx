@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
+import { CheckCircle2, AlertCircle, Clock, RefreshCw } from 'lucide-react';
 
 export function DocumentStatus({ documentId, initialStatus, errorMessage }: { documentId: string, initialStatus: string, errorMessage?: string }) {
   const [status, setStatus] = useState(initialStatus);
@@ -22,22 +23,44 @@ export function DocumentStatus({ documentId, initialStatus, errorMessage }: { do
     return () => clearInterval(interval);
   }, [documentId, status]);
 
-  const getBadgeStyle = () => {
+  const getStatusDisplay = () => {
     switch (status) {
-      case 'READY': return 'bg-green-100 text-green-800 border-green-200';
-      case 'FAILED': return 'bg-red-100 text-red-800 border-red-200';
-      case 'UPLOADED': return 'bg-gray-100 text-gray-800 border-gray-200';
-      case 'QUEUED': return 'bg-blue-100 text-blue-800 border-blue-200';
-      default: return 'bg-yellow-100 text-yellow-800 border-yellow-200'; // EXTRACTING, CHUNKING, EMBEDDING
+      case 'READY':
+        return {
+          icon: <CheckCircle2 className="w-3.5 h-3.5 text-black" />,
+          classes: 'bg-neutral-100 text-black border-black',
+          label: 'READY',
+        };
+      case 'FAILED':
+        return {
+          icon: <AlertCircle className="w-3.5 h-3.5 text-black" />,
+          classes: 'bg-neutral-200 text-black border-black',
+          label: 'FAILED',
+        };
+      case 'UPLOADED':
+        return {
+          icon: <Clock className="w-3.5 h-3.5 text-black" />,
+          classes: 'bg-white text-black border-black',
+          label: 'UPLOADED',
+        };
+      default: // EXTRACTING, CHUNKING, EMBEDDING, QUEUED
+        return {
+          icon: <RefreshCw className="w-3.5 h-3.5 text-black animate-spin" />,
+          classes: 'bg-neutral-100 text-black border-black',
+          label: status,
+        };
     }
   };
 
+  const { icon, classes, label } = getStatusDisplay();
+
   return (
     <span 
-      className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${getBadgeStyle()}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-bold rounded border-2 ${classes} shadow-[1.5px_1.5px_0px_#000]`}
       title={status === 'FAILED' ? errorMsg || 'Processing failed' : undefined}
     >
-      {status}
+      {icon}
+      <span>{label}</span>
     </span>
   );
 }

@@ -1,65 +1,79 @@
-
 import { Link } from 'react-router-dom';
 import { SearchResult } from '../hooks/useSearch';
+import { FileText, ArrowUpRight, Target } from 'lucide-react';
 
 export function ResultsList({ results }: { results: SearchResult[] }) {
   if (results.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-6 mt-6">
-      {results.map((result, idx) => (
-        <div 
-          key={`${result.documentId}-${idx}`} 
-          className="group bg-white hover:bg-blue-50/30 border border-gray-100 hover:border-blue-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-200 ease-in-out"
-        >
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h3 className="font-bold text-xl text-gray-900 flex items-center gap-3">
-                {result.clauseTitle || 'Untitled Clause'}
-                {result.clauseIdentifier && (
-                  <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-md border border-gray-200 font-medium font-mono">
-                    {result.clauseIdentifier}
-                  </span>
-                )}
-              </h3>
-              <div className="flex flex-wrap items-center gap-2 mt-2 text-sm">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-800 font-medium text-xs border border-blue-100">
-                  <svg className="w-3.5 h-3.5 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                  {result.fileName}
+      {results.map((result, idx) => {
+        const matchPercent = (result.relevanceScore * 100).toFixed(0);
+        return (
+          <div 
+            key={`${result.documentId}-${idx}`} 
+            className="border-2 border-black rounded-lg bg-white shadow-[4px_4px_0px_#000] overflow-hidden transition-transform hover:-translate-y-0.5"
+          >
+            {/* Retro Mac window header bar */}
+            <div className="flex items-center justify-between px-4 py-2 bg-neutral-100 border-b-2 border-black font-mono text-xs">
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1 text-black font-bold">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full border border-black bg-white"></span>
+                  <span className="inline-block w-2.5 h-2.5 rounded-full border border-black bg-white"></span>
                 </span>
-                <span className="text-gray-400">•</span> 
-                <span className="text-gray-600 font-medium text-xs bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
-                  Page {result.pageNumber}
+                <span className="text-black font-bold ml-1">
+                  result-{idx + 1}.clause
                 </span>
               </div>
+              <div className="flex items-center gap-1.5 font-bold border-2 border-black px-2 py-0.5 rounded bg-white shadow-[1px_1px_0px_#000]">
+                <Target className="w-3.5 h-3.5 text-black" />
+                <span>{matchPercent}% Match</span>
+              </div>
             </div>
-            <div className={`text-sm font-bold px-3 py-1 rounded-full border shadow-sm flex items-center gap-1 ${
-              result.relevanceScore >= 0.75 
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60' 
-                : result.relevanceScore >= 0.55 
-                  ? 'bg-blue-50 text-blue-700 border-blue-200/60' 
-                  : 'bg-amber-50 text-amber-700 border-amber-200/60'
-            }`}>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-              {(result.relevanceScore * 100).toFixed(0)}% Match
-            </div>
-          </div>
-          
-          <div className="text-gray-700 my-5 text-sm bg-gray-50/80 p-5 rounded-xl italic border-l-4 border-blue-400 leading-relaxed group-hover:bg-white transition-colors">
-            {result.matchedChunkText ? 
-              (result.matchedChunkText.length > 300 ? result.matchedChunkText.substring(0, 300) + '...' : result.matchedChunkText)
-              : (result.parentClauseText ? result.parentClauseText.substring(0, 300) + '...' : '')}
-          </div>
 
-          <Link
-            to={`/viewer/${result.documentId}?page=${result.pageNumber}${result.coordinates ? `&x1=${result.coordinates.x1}&y1=${result.coordinates.y1}&x2=${result.coordinates.x2}&y2=${result.coordinates.y2}` : ''}`}
-            className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-bold bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors group/link"
-          >
-            View in PDF 
-            <svg className="w-4 h-4 group-hover/link:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
-          </Link>
-        </div>
-      ))}
+            <div className="p-6">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <h3 className="font-bold text-lg text-black flex items-center gap-3">
+                    {result.clauseTitle || 'Untitled Clause'}
+                    {result.clauseIdentifier && (
+                      <span className="text-xs bg-neutral-100 text-black px-2 py-0.5 rounded border border-black font-mono font-bold">
+                        {result.clauseIdentifier}
+                      </span>
+                    )}
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-2 mt-2 font-mono text-xs">
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-neutral-100 text-black font-bold border border-black">
+                      <FileText className="w-3.5 h-3.5 text-black" />
+                      {result.fileName}
+                    </span>
+                    <span className="text-black font-bold">•</span> 
+                    <span className="text-neutral-700 font-bold bg-white px-2 py-0.5 rounded border border-black">
+                      Page {result.pageNumber}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="my-4 text-sm font-serif bg-neutral-50 p-4 rounded border-2 border-black leading-relaxed italic text-black">
+                "{result.matchedChunkText ? 
+                  (result.matchedChunkText.length > 300 ? result.matchedChunkText.substring(0, 300) + '...' : result.matchedChunkText)
+                  : (result.parentClauseText ? result.parentClauseText.substring(0, 300) + '...' : '')}"
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <Link
+                  to={`/viewer/${result.documentId}?page=${result.pageNumber}${result.coordinates ? `&x1=${result.coordinates.x1}&y1=${result.coordinates.y1}&x2=${result.coordinates.x2}&y2=${result.coordinates.y2}` : ''}`}
+                  className="ink-btn bg-white hover:bg-neutral-100 text-black text-xs font-mono font-bold px-4 py-2 rounded gap-2"
+                >
+                  View in PDF 
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

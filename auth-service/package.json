@@ -1,0 +1,22 @@
+{
+  "name": "evidex-auth-service",
+  "version": "1.0.0",
+  "description": "Authentication microservice for Evidex Contract Intelligence",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "node --loader ts-node/esm --watch src/server.ts 2>nul || npx tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "start:ts": "npx tsx src/server.ts"
+  },
+  "keywords": ["auth", "jwt", "microservice", "evidex"],
+  "author": "Evidex Team",
+  "license": "ISC",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
+import { ChevronLeft, ChevronRight, FileText, CheckCircle2 } from 'lucide-react';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 
@@ -31,7 +32,6 @@ export function ContractViewer({ pdfUrl, pageNumber, coordinates, clauseTitle, c
   useEffect(() => {
     const el = targetRef.current;
     if (el) {
-      // Small delay for react-pdf to finish layout
       const t = setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
       return () => clearTimeout(t);
     }
@@ -44,53 +44,69 @@ export function ContractViewer({ pdfUrl, pageNumber, coordinates, clauseTitle, c
   const showHighlight = currentPage === pageNumber && isRealHighlight(coordinates);
 
   return (
-    <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-120px)]">
-      <div className="flex-1 flex flex-col bg-gray-200 rounded-xl border border-gray-300 shadow-inner">
-        {/* Page navigation */}
-        <div className="flex items-center justify-between px-4 py-2 bg-gray-100 rounded-t-xl border-b border-gray-300">
-          <button
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={currentPage <= 1}
-            className="px-3 py-1 text-sm font-medium rounded-lg bg-white border border-gray-200 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            ← Prev
-          </button>
-          <span className="text-sm font-medium text-gray-700">
-            Page {currentPage}{numPages ? ` / ${numPages}` : ''}
-            {currentPage === pageNumber && <span className="ml-2 text-xs text-blue-600 font-bold">(Match)</span>}
-          </span>
-          <button
-            onClick={() => setCurrentPage(p => numPages ? Math.min(numPages, p + 1) : p + 1)}
-            disabled={!!numPages && currentPage >= numPages}
-            className="px-3 py-1 text-sm font-medium rounded-lg bg-white border border-gray-200 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Next →
-          </button>
+    <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-140px)]">
+      <div className="flex-1 flex flex-col bg-white border-2 border-black rounded-lg shadow-[4px_4px_0px_#000] overflow-hidden">
+        {/* Retro Mac window header & navigation */}
+        <div className="flex items-center justify-between px-4 py-2 bg-neutral-100 border-b-2 border-black font-mono text-xs">
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full border border-black bg-white inline-block"></span>
+              <span className="w-2.5 h-2.5 rounded-full border border-black bg-white inline-block"></span>
+            </span>
+            <span className="font-bold text-black flex items-center gap-1.5 ml-2">
+              <FileText className="w-3.5 h-3.5" />
+              viewer.app
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              className="ink-btn px-2.5 py-1 text-xs font-mono font-bold bg-white text-black rounded disabled:opacity-30"
+            >
+              <ChevronLeft className="w-3.5 h-3.5 inline mr-1" /> Prev
+            </button>
+            <span className="font-mono font-bold text-black">
+              Page {currentPage}{numPages ? ` / ${numPages}` : ''}
+              {currentPage === pageNumber && (
+                <span className="ml-2 bg-black text-white px-1.5 py-0.5 rounded text-[10px]">MATCH</span>
+              )}
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => numPages ? Math.min(numPages, p + 1) : p + 1)}
+              disabled={!!numPages && currentPage >= numPages}
+              className="ink-btn px-2.5 py-1 text-xs font-mono font-bold bg-white text-black rounded disabled:opacity-30"
+            >
+              Next <ChevronRight className="w-3.5 h-3.5 inline ml-1" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-8 flex flex-col items-center">
+        {/* PDF Document viewport */}
+        <div className="flex-1 overflow-auto p-6 flex flex-col items-center bg-neutral-200">
           <Document 
             file={pdfUrl} 
             onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-            loading={<div className="p-10 text-gray-500 font-medium">Loading Document...</div>}
+            loading={<div className="p-10 font-mono text-sm font-bold text-black">Loading Contract PDF…</div>}
             className="flex flex-col gap-6 w-full items-center"
           >
             {pages.map((p) => (
               <div
                 key={p}
                 ref={p === currentPage ? targetRef : undefined}
-                className="relative shadow-lg bg-white"
+                className="relative border-2 border-black shadow-[4px_4px_0px_#000] bg-white"
               >
                 <Page 
                   pageNumber={p} 
                   renderTextLayer={false} 
                   renderAnnotationLayer={false} 
-                  width={800}
+                  width={780}
                   className="overflow-hidden"
                 />
                 {p === pageNumber && showHighlight && (
                   <div
-                    className="absolute bg-yellow-400/40 border-2 border-yellow-500 pointer-events-none transition-all duration-500"
+                    className="absolute bg-black/15 border-2 border-black pointer-events-none transition-all duration-300"
                     style={{
                       left: `${coordinates!.x1 * 100}%`,
                       top: `${coordinates!.y1 * 100}%`,
@@ -99,8 +115,8 @@ export function ContractViewer({ pdfUrl, pageNumber, coordinates, clauseTitle, c
                     }}
                   />
                 )}
-                <div className="absolute bottom-2 right-3 text-xs text-gray-400 bg-white/80 px-2 py-0.5 rounded">
-                  {p}
+                <div className="absolute bottom-2 right-3 font-mono text-xs font-bold text-black bg-white border border-black px-2 py-0.5 shadow-[1px_1px_0px_#000]">
+                  p. {p}
                 </div>
               </div>
             ))}
@@ -109,10 +125,16 @@ export function ContractViewer({ pdfUrl, pageNumber, coordinates, clauseTitle, c
       </div>
       
       {(clauseTitle || clauseText) && (
-        <div className="w-full md:w-96 bg-white p-6 border border-gray-200 rounded-xl shadow-md overflow-auto flex flex-col">
-          <h3 className="font-bold text-gray-900 text-lg mb-4 border-b border-gray-100 pb-3">{clauseTitle || 'Clause Details'}</h3>
-          <div className="text-gray-700 leading-relaxed whitespace-pre-wrap flex-1">
-            {clauseText || 'No text provided.'}
+        <div className="w-full lg:w-96 bg-white border-2 border-black rounded-lg shadow-[4px_4px_0px_#000] overflow-hidden flex flex-col">
+          <div className="px-4 py-2 bg-neutral-100 border-b-2 border-black font-mono text-xs font-bold text-black flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Clause Inspector
+          </div>
+          <div className="p-5 flex-1 overflow-auto flex flex-col">
+            <h3 className="font-bold text-black text-base mb-3 border-b-2 border-black pb-2">{clauseTitle || 'Clause Details'}</h3>
+            <div className="font-serif text-sm text-black leading-relaxed whitespace-pre-wrap flex-1">
+              {clauseText || 'No clause text provided.'}
+            </div>
           </div>
         </div>
       )}
