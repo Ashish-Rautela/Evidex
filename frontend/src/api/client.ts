@@ -1,10 +1,13 @@
 const fetchApi = async (path: string, options: RequestInit, isAuthService = false) => {
-  const defaultApiUrl = '';
-  const defaultAuthUrl = 'http://localhost:5001';
-  
-  const baseUrl = isAuthService 
-    ? (import.meta.env.VITE_AUTH_URL || localStorage.getItem('auth_url') || defaultAuthUrl)
-    : (import.meta.env.VITE_API_URL || localStorage.getItem('api_url') || defaultApiUrl);
+  const mainApiUrl = import.meta.env.VITE_API_URL || localStorage.getItem('api_url') || '';
+
+  // ponytail: local dev uses standalone auth-service on :5001; production routes auth through the same API Gateway
+  const isLocalDev = typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+  const baseUrl = isAuthService
+    ? (import.meta.env.VITE_AUTH_URL || localStorage.getItem('auth_url') || (isLocalDev ? 'http://localhost:5001' : mainApiUrl))
+    : mainApiUrl;
 
   const token = localStorage.getItem('id_token');
   const userProfileRaw = localStorage.getItem('user_profile');
@@ -26,11 +29,15 @@ const fetchApi = async (path: string, options: RequestInit, isAuthService = fals
     headers['x-user-id'] = userProfile.id;
   }
 
-  const res = await fetch(`${baseUrl}${path}`, { ...options, headers: { ...headers, ...options.headers } });
+  const cleanBase = baseUrl.replace(/\/+$/, '');
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const requestUrl = cleanBase ? `${cleanBase}${cleanPath}` : cleanPath;
+
+  const res = await fetch(requestUrl, { ...options, headers: { ...headers, ...options.headers } });
   
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(errBody.message || 'API request failed');
+    throw new Error(errBody.message || errBody.error || res.statusText || `Request failed (${res.status})`);
   }
   
   // Handle empty responses

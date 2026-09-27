@@ -7,6 +7,7 @@ await build({
     document: 'src/handlers/document.handler.ts',
     extract: 'src/handlers/extract.handler.ts',
     chunk: 'src/handlers/chunk.handler.ts',
+    auth: 'src/handlers/auth.handler.ts',
   },
   bundle: true,
   platform: 'node',

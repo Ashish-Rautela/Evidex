@@ -33,6 +33,8 @@ Globals:
         S3_BUCKET: !Ref ContractsBucket
         SQS_QUEUE_URL: !Ref IngestionQueue
         BEDROCK_EMBED_MODEL_ID: "amazon.titan-embed-text-v2:0"
+        COGNITO_USER_POOL_ID: !Ref UserPool
+        COGNITO_CLIENT_ID: !Ref UserPoolClient
 
 Resources:
   # ============================================================================
@@ -294,6 +296,7 @@ Resources:
       GenerateSecret: false
       ExplicitAuthFlows:
         - ALLOW_USER_SRP_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
 
   # ============================================================================
@@ -313,6 +316,8 @@ Resources:
         AllowHeaders:
           - Authorization
           - Content-Type
+          - x-tenant-id
+          - x-user-id
       Auth:
         Authorizers:
           CognitoAuthorizer:
@@ -482,6 +487,56 @@ Resources:
               Action:
                 - bedrock:InvokeModel
               Resource: "*"
+
+  AuthHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: auth.handler
+      CodeUri: ../backend/dist/
+      MemorySize: 256
+      Timeout: 30
+      Events:
+        Signup:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/auth/signup
+            Method: POST
+            ApiId: !Ref HttpApi
+        Login:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/auth/login
+            Method: POST
+            ApiId: !Ref HttpApi
+        Verify:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/auth/verify
+            Method: POST
+            ApiId: !Ref HttpApi
+        Logout:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/auth/logout
+            Method: POST
+            ApiId: !Ref HttpApi
+        Me:
+          Type: HttpApi
+          Properties:
+            Path: /api/v1/auth/me
+            Method: GET
+            ApiId: !Ref HttpApi
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:SignUp
+                - cognito-idp:AdminConfirmSignUp
+                - cognito-idp:InitiateAuth
+                - cognito-idp:GetUser
+              Resource:
+                - !GetAtt UserPool.Arn
+                - "*"
 
 # ============================================================================
 # Outputs
